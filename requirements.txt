@@ -1,0 +1,2 @@
+goodwe
+openpyxl   # jen pro sems_import.py

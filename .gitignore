@@ -1,0 +1,8 @@
+# osobní data z měniče a ze SEMS - do repozitáře nepatří
+goodwe_historie.csv
+goodwe_pocitadla.csv
+goodwe_sems.csv
+*.xlsx
+__pycache__/
+*.pyc
+desktop.ini
