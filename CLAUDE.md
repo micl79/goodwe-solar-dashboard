@@ -43,3 +43,10 @@ Komunikace s uživatelem je česky.
 - Nasazení: Vercel (Root Directory `vyloha`, produkce po pushi do `main`) + Upstash Redis. Klíč `PUSH_TOKEN` je jen ve Vercelu a v proměnné `GW_VEREJNE_TOKEN` na PC, nikdy v souborech.
 - Veřejné ovládání NENÍ hotové a nedělá se bez přihlášení přes e-mail (Cloudflare Access): samotný šestimístný kód je na internet slabý. Ovládání zatím jen přes Tailscale.
 
+## Jazyky (čeština, angličtina)
+- Rozhraní je česky (zdrojový text) a anglicky. Slovník `EN` je v HTML dashboardu (klíč = český text, `{0}` = proměnná část). Texty na stránce překládá překladač (`MutationObserver` + `T()`), věty složené za běhu se píší přes `L('český text {0}',hodnota)`, hodnoty ze serveru přes `T()`.
+- Nový text v rozhraní: přidat do `EN`, jinak zůstane česky. Kontrola: v prohlížeči přepnout na angličtinu a projít stránku (hledat texty s diakritikou) ve všech stavech (zamčeno, odemčeno, nabíjení, okno, analýza se všemi obdobími).
+- Čísla a data se formátují podle jazyka (`LOC()`, `PC()`, `dm()`); Kč se v angličtině píše CZK. Odkaz `?lang=en` otevře stránku anglicky.
+- Oznámení na telefon mají obě verze (`en=(titulek,text)` v `notify`), jazyk si ukládá každý telefon při zapnutí.
+- Web `blackbirds-web` má vlastní, jednoduchý přepínač (`data-en`).
+

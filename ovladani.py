@@ -256,11 +256,14 @@ async def tick(inv, soc):
         return
     if soc >= c["target"]:
         reason = f"cíl {c['target']} % dosažen"
+        reason_en = f"The {c['target']}% target was reached"
     elif time.time() - c["t0"] > MAX_CHARGE_S:
         reason = "uplynul časový limit 8 h"
+        reason_en = "The 8 h time limit passed"
     else:
         return
     await _restore(inv, "charge")
     _log("automaticky", "nabíjení skončilo, režim vrácen zpět", reason)
     if oznam:
-        oznam("Nabíjení skončilo", f"{reason[0].upper()}{reason[1:]}. Režim měniče je vrácený zpět.", "nabijeni")
+        oznam("Nabíjení skončilo", f"{reason[0].upper()}{reason[1:]}. Režim měniče je vrácený zpět.", "nabijeni",
+              en=("Charging finished", f"{reason_en}. The inverter mode has been restored."))

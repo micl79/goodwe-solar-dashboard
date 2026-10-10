@@ -13,7 +13,7 @@ bez cloudu. Jeden soubor, bez dalších závislostí kromě `goodwe`.
 - **Spotové ceny** z burzy OTE (hodinové, kurz ČNB) v levém sloupci. Shodují se s cenou v aplikaci dodavatele.
 - **Ovládání měniče** v pravém sloupci: nabít baterii, přepnout režim, nejnižší stav baterie, limit prodeje. Chráněno přístupovým kódem, s možností "Vrátit na původní".
 - **Upozornění na iPhone** (baterie plná, nabíjení skončilo, měnič nedostupný).
-- Tmavé "luxusní" téma.
+- Čeština a angličtina (vlajky v záhlaví), tmavý, světlý a automatický vzhled.
 
 ## Spuštění (Windows)
 ```

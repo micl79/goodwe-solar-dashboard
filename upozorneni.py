@@ -82,13 +82,14 @@ def count():
         return len(_load())
 
 
-def subscribe(sub):
+def subscribe(sub, lang="cs"):
     if not (isinstance(sub, dict) and isinstance(sub.get("endpoint"), str) and sub["endpoint"].startswith("https://")
             and isinstance(sub.get("keys"), dict) and sub["keys"].get("p256dh") and sub["keys"].get("auth")):
         raise ValueError("Neplatné přihlášení k upozorněním")
     with _lock:
         subs = [s for s in _load() if s["endpoint"] != sub["endpoint"]]
-        subs.append({"endpoint": sub["endpoint"], "keys": {"p256dh": sub["keys"]["p256dh"], "auth": sub["keys"]["auth"]}})
+        subs.append({"endpoint": sub["endpoint"], "lang": "en" if lang == "en" else "cs",
+                     "keys": {"p256dh": sub["keys"]["p256dh"], "auth": sub["keys"]["auth"]}})
         _save(subs)
 
 
@@ -97,13 +98,14 @@ def unsubscribe(endpoint):
         _save([s for s in _load() if s["endpoint"] != endpoint])
 
 
-def _send_all(title, body, tag):
+def _send_all(title, body, tag, en=None):
     with _lock:
         subs = _load()
     dead, sent = [], 0
     for s in subs:
         try:
-            webpush(s, json.dumps({"title": title, "body": body, "tag": tag}), vapid_private_key=_vapid,
+            t, b = en if (en and s.get("lang") == "en") else (title, body)    # jazyk, který si telefon zvolil
+            webpush(s, json.dumps({"title": t, "body": b, "tag": tag}), vapid_private_key=_vapid,
                     vapid_claims=dict(CLAIMS), ttl=3600, timeout=15)
             sent += 1
         except WebPushException as e:
@@ -118,13 +120,14 @@ def _send_all(title, body, tag):
     return sent
 
 
-def notify(title, body, tag=None, wait=False):
-    """Pošle upozornění všem přihlášeným telefonům. Standardně na pozadí, ať nezdržuje čtení měniče."""
+def notify(title, body, tag=None, wait=False, en=None):
+    """Pošle upozornění všem přihlášeným telefonům. Standardně na pozadí, ať nezdržuje čtení měniče.
+    en = (titulek, text) v angličtině pro telefony, které mají zvolenou angličtinu."""
     if not (OK and _vapid):
         return 0
     if wait:
-        return _send_all(title, body, tag)
-    threading.Thread(target=_send_all, args=(title, body, tag), daemon=True).start()
+        return _send_all(title, body, tag, en)
+    threading.Thread(target=_send_all, args=(title, body, tag, en), daemon=True).start()
     return 0
 
 
@@ -136,19 +139,22 @@ def tick(soc, now=None, send=None):
     if soc is None:
         if not _st["offline_sent"] and now - _st["last_ok"] > OFFLINE_AFTER_S:
             _st["offline_sent"] = True
-            send("Měnič je nedostupný", "Dashboard ho nemůže přečíst už 10 minut.", "offline")
+            send("Měnič je nedostupný", "Dashboard ho nemůže přečíst už 10 minut.", "offline",
+                 en=("Inverter unavailable", "The dashboard has not been able to read it for 10 minutes."))
         return
     _st["last_ok"] = now
     if _st["offline_sent"]:
         _st["offline_sent"] = False
-        send("Měnič je zase online", "Spojení s měničem funguje.", "offline")
+        send("Měnič je zase online", "Spojení s měničem funguje.", "offline",
+             en=("Inverter is back online", "The connection to the inverter works."))
     if _st["armed"] is None:                 # první čtení po startu: neoznamuj, jen se nastav
         _st["armed"] = soc < 90
     elif soc < 90:
         _st["armed"] = True
     elif soc >= 100 and _st["armed"]:
         _st["armed"] = False
-        send("Baterie je plná", "Stav baterie dosáhl 100 %.", "plna")
+        send("Baterie je plná", "Stav baterie dosáhl 100 %.", "plna",
+                 en=("Battery full", "The battery level has reached 100%."))
 
 
 # --- souhrn zítřejších cen ---
@@ -156,18 +162,21 @@ def _kc(v):
     return f"{v:.2f}".replace(".", ",")
 
 
-def souhrn_cen(vals, okno=3):
+def souhrn_cen(vals, okno=3, lang="cs"):
     """Text upozornění z hodinových cen (Kč/kWh): nejlevnější okno hodin po sobě, nejdražší hodina, záporné ceny."""
     n = len(vals)
     okno = min(okno, n)
     best = min(range(n - okno + 1), key=lambda i: sum(vals[i:i + okno]))
     prum = sum(vals[best:best + okno]) / okno
     drahe = max(range(n), key=lambda i: vals[i])
-    s = f"Nejlevnější {okno} hodiny po sobě: {best}–{best + okno} h, průměr {_kc(prum)} Kč/kWh. Nejdražší hodina: {drahe}–{drahe + 1} h ({_kc(vals[drahe])} Kč)."
     zap = [i for i, v in enumerate(vals) if v <= 0]
-    if zap:
-        s += f" Záporná cena: {', '.join(f'{i}–{i + 1} h' for i in zap[:4])}."
-    return s
+    hodiny = ", ".join(f"{i}–{i + 1} h" for i in zap[:4])
+    if lang == "en":
+        s = (f"Cheapest {okno} hours in a row: {best}–{best + okno} h, average {prum:.2f} CZK/kWh. "
+             f"Most expensive hour: {drahe}–{drahe + 1} h ({vals[drahe]:.2f} CZK).")
+        return s + (f" Negative price: {hodiny}." if zap else "")
+    s = f"Nejlevnější {okno} hodiny po sobě: {best}–{best + okno} h, průměr {_kc(prum)} Kč/kWh. Nejdražší hodina: {drahe}–{drahe + 1} h ({_kc(vals[drahe])} Kč)."
+    return s + (f" Záporná cena: {hodiny}." if zap else "")
 
 
 def ceny_zitra(den, vals, send=None):
@@ -179,7 +188,8 @@ def ceny_zitra(den, vals, send=None):
         last = None
     if last is not None and last >= den:
         return False
-    send("Zítřejší ceny elektřiny", souhrn_cen(vals), "ceny")
+    send("Zítřejší ceny elektřiny", souhrn_cen(vals), "ceny",
+         en=("Tomorrow’s electricity prices", souhrn_cen(vals, lang="en")))
     with open(STAV_PATH, "w", encoding="utf-8") as f:
         json.dump({"ceny_zitra": den}, f)
     return True

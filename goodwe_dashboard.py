@@ -485,6 +485,9 @@ HTML = r"""<!doctype html>
 :root[data-theme="light"] .tip{box-shadow:0 14px 30px rgba(60,45,15,.18)}
 :root[data-theme="light"] body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#1d1a14;z-index:50}
 .themeseg{display:inline-flex}
+.langseg{display:inline-flex}.langseg button{display:inline-flex;align-items:center;padding:5px 10px}
+.langseg svg{width:22px;height:15px;display:block;border-radius:2px;box-shadow:0 0 0 1px rgba(128,128,128,.35)}
+.langseg button:not(.on) svg{opacity:.55}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;color:var(--ink);font:15px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;font-weight:400;-webkit-font-smoothing:antialiased;
@@ -632,6 +635,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
 <header>
  <h1>Solární elektrárna<small id="model">GW10K-ET</small></h1>
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <span class="seg langseg" id="langseg" aria-label="Jazyk"><button data-l="cs" title="Čeština" aria-label="Čeština"><svg viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0L15 10L0 20Z" fill="#11457e"/></svg></button><button data-l="en" title="English" aria-label="English"><svg viewBox="0 0 60 40" aria-hidden="true"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="13"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="8"/></svg></button></span>
   <span class="seg themeseg" id="themeseg" aria-label="Vzhled"><button data-t="dark">Tmavý</button><button data-t="light">Světlý</button><button data-t="auto">Auto</button></span>
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
   <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
@@ -692,18 +696,169 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
 <script>
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* ---------- jazyk (čeština / angličtina) ---------- */
+const EN={
+/* hlavička, nadpisy, tlačítka */
+"Solární elektrárna":"Solar power plant","Analýza":"Analysis","Analýza energie":"Energy analysis","Baterie":"Battery",
+"Baterie (+ vybíjení, − nabíjení)":"Battery (+ discharging, − charging)","Celkem":"Total","Ceny":"Prices","Dům":"House","FVE":"PV",
+"Měsíc":"Month","Načítám ceny…":"Loading prices…","Načítám…":"Loading…","Ovládání":"Controls","Potvrdit":"Confirm","Rok":"Year",
+"Spotová cena":"Spot price","Spotřeba domu":"House consumption","Světlý":"Light","Tmavý":"Dark","Síť":"Grid",
+"Síť (+ odběr, − dodávka)":"Grid (+ import, − export)","Tabulka":"Table","Tok energie teď":"Energy flow now","Týden":"Week",
+"Výkon v čase":"Power over time","Výroba FVE":"PV production","Vývoj v čase":"Trend over time","Zrušit":"Cancel",
+"připojování…":"connecting…","Čas":"Time","Živě":"Live","Vzhled":"Appearance","Jazyk":"Language",
+"Tok energie mezi solárem, sítí, domem, spotřebou a baterií":"Energy flow between solar, grid, house, consumption and battery",
+"Prodej a nákup jsou z elektroměru. „Vlastní spotřeba“ = výroba, která nešla do sítě. „Soběstačnost“ = podíl spotřeby, který nebyl nakoupen. Nabíjení baterie ze sítě se počítá do nákupu, hodnoty jsou proto orientační.":
+"Sales and purchases come from the electricity meter. “Self-consumption” = production that did not go to the grid. “Self-sufficiency” = the share of consumption that was not bought. Charging the battery from the grid counts as a purchase, so the figures are approximate.",
+/* tok energie */
+"Solár (FVE)":"Solar (PV)","vyrábí":"producing","nevyrábí":"not producing","odběr ze sítě":"importing from grid","dodávka do sítě":"exporting to grid",
+"bez výměny":"no exchange","aktuální odběr":"current consumption","vybíjí se":"discharging","nabíjí se":"charging","nečinná":"idle","měnič":"inverter",
+"Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}",
+"Dnes vyrobeno":"Produced today","Dnes spotřebováno":"Consumed today","Dnes nabito do baterie":"Charged into battery today","Dnes vybito z baterie":"Discharged from battery today",
+"Nabití baterie":"Battery level","Čekám na první data…":"Waiting for the first data…",
+/* analýza */
+"Denní hodnoty (kWh)":"Daily values (kWh)","Měsíční hodnoty (kWh)":"Monthly values (kWh)","Roční hodnoty (kWh)":"Yearly values (kWh)",
+"Historie se teprve sbírá. Sloupce se objeví po prvním celém dni.":"History is still being collected. Bars appear after the first full day.",
+"Zatím nejsou uložená žádná počítadla energie. Počkej pár minut, než se uloží první záznam.":"No energy counters have been stored yet. Wait a few minutes for the first record.",
+"Vyrobeno":"Produced","Spotřebováno doma":"Consumed at home","Prodáno do sítě":"Sold to grid","Nakoupeno ze sítě":"Bought from grid",
+"Soběstačnost":"Self-sufficiency","Vlastní spotřeba výroby":"Self-consumption of production","Odkud je spotřeba":"Where consumption comes from","Kam šla výroba":"Where production went",
+"Podíl spotřeby domu, který pokryla vlastní výroba (přímo nebo přes baterii).":"Share of house consumption covered by own production (directly or via the battery).",
+"Podíl vyrobené energie, který zůstal v domě a neodešel do sítě.":"Share of produced energy that stayed in the house and did not go to the grid.",
+"Vlastní zdroj:":"Own source:","Ze sítě:":"From grid:","Doma:":"At home:","Prodáno:":"Sold:","Baterie: nabito":"Battery: charged","vybito":"discharged",
+"Výroba":"Production","Spotřeba":"Consumption","Prodej do sítě":"Sold to grid","Nákup ze sítě":"Bought from grid","▨ odhad":"▨ estimate",
+"Období":"Period","Prodej":"Sales","Nákup":"Purchase","Nabito":"Charged","Vybito":"Discharged"," ~odhad":" ~estimate","{0} % období":"{0}% of the period",
+"Celkové součty jsou počítadla měniče a elektroměru. Roční sloupce jsou ze SEMS (od {0}), spotřeba je dopočtená.":"Totals are the inverter and meter counters. Yearly bars come from SEMS (since {0}); consumption is calculated.",
+"Celkové hodnoty jsou celoživotní počítadla měniče a elektroměru. Sloupce níže se plní od {0}.":"Totals are the lifetime counters of the inverter and meter. The bars below are filled in since {0}.",
+"Data mám od {0}.":"Data available since {0}.",
+"K dispozici je zatím {0} z {1} dní, součty proto zahrnují jen tuto dobu.":"Only {0} of {1} days are available so far, so the totals cover just this period.",
+"Šrafované sloupce jsou ODHAD za výpadek dat ve SEMS ({0} až {1}): chybějící energie se dopočítala z rozdílu počítadel měniče a sezónního průběhu z minulých let. Výroba za výpadek ≈ {2} kWh.":
+"Hatched bars are an ESTIMATE for the data outage in SEMS ({0} to {1}): the missing energy was calculated from the difference of the inverter counters and the seasonal profile of past years. Production during the outage ≈ {2} kWh.",
+"z toho {0} využito doma":"{0} of it used at home"," · odhad {0} kWh":" · estimate {0} kWh","z vlastní výroby a baterie {0}":"{0} from own production and battery",
+"{0} výroby":"{0} of production","{0} spotřeby":"{0} of consumption",
+/* ceny */
+"Dnes":"Today","Zítra":"Tomorrow","průměr dne":"daily average","nejlevnější":"cheapest","průměr":"average","nejdražší":"most expensive",
+"Kč/kWh":"CZK/kWh","Kč/EUR":"CZK/EUR",
+"Ceny z OTE se nepodařilo načíst{0}. Zkusím to znovu za pár minut.":"Could not load prices from OTE{0}. Will try again in a few minutes.",
+"Zdroj: burza OTE":"Source: OTE exchange",", kurz ČNB {0} Kč/EUR":", CNB rate {0} CZK/EUR","Včetně přirážky {0} Kč/kWh.":"Including a margin of {0} CZK/kWh.",
+"Stejná cena jako v aplikaci dodavatele.":"Same price as in the supplier’s app.","Ceny na zítřek OTE zveřejňuje odpoledne.":"OTE publishes tomorrow’s prices in the afternoon.",
+" Cena elektřiny teď: {0} Kč/kWh.":" Electricity price now: {0} CZK/kWh.",
+/* ovládání */
+"vypnuto":"disabled","nedostupné":"unavailable","zamčeno":"locked","odemčeno":"unlocked","ukázka":"demo",
+"Ovládání je vypnuté, protože není nastavený přístupový kód. V PowerShellu spusťte":"Controls are disabled because no access code is set. In PowerShell run",
+"(aspoň 6 znaků) a dashboard znovu spusťte.":"(at least 6 characters) and start the dashboard again.",'setx GW_PIN "váš-kód"':'setx GW_PIN "your-code"',
+"Měnič teď neodpovídá{0}.":"The inverter is not responding{0}.","Zkusit znovu":"Try again","Přístupový kód":"Access code","Odemknout":"Unlock",
+"Režim":"Mode","Základní":"General","Vlastní spotřeba":"Self-use","Ořezání špiček":"Peak shaving","Záloha":"Backup","Ostrovní":"Off-grid",
+"Měnič je v ostrovním režimu, ten odsud nejde měnit.":"The inverter is in off-grid mode, which cannot be changed from here.",
+"Vrátit na původní ({0})":"Revert to original ({0})","Nabít baterii teď":"Charge battery now",
+"Probíhá nabíjení do {0} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.":"Charging up to {0}% is in progress. It stops by itself when the target is reached and restores the previous mode.",
+"Zrušit nabíjení":"Cancel charging","Baterie teď: {0}. Nabíjí se i ze sítě.":"Battery now: {0}. It also charges from the grid.",
+"Cílový stav":"Target level","Výkon nabíjení":"Charging power","Nabíjet":"Charge","Nejnižší stav baterie":"Minimum battery level",
+"Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: {0} %.":"The battery will not discharge below this value. Now: {0}%.",
+"Nejnižší stav":"Minimum level","Nastavit":"Set","Limit prodeje do sítě":"Grid export limit","Teď: {0} W. Nula znamená neprodávat.":"Now: {0} W. Zero means no export.",
+"Limit":"Limit","Vrátit vše na původní":"Revert everything to original","Upozornění na tento telefon":"Notifications on this device","Zjišťuji…":"Checking…",
+"Zapnout":"Turn on","Poslat zkoušku":"Send a test","Vypnout":"Turn off",
+"Tady upozornění nejdou. Na iPhonu (iOS 16.4 a novější) otevřete dashboard z ikony na ploše přes adresu s https://, ne přes WiFi adresu s http://.":"Notifications are not available here. On iPhone (iOS 16.4 or later) open the dashboard from the home-screen icon via the https:// address, not the Wi-Fi address with http://.",
+"Zapnuto. Přijde: baterie plná, nabíjení skončilo, měnič nedostupný 10 minut a zase online.":"On. You will get: battery full, charging finished, inverter unavailable for 10 minutes and back online.",
+"Vypnuto. Po zapnutí přijde: baterie plná, nabíjení skončilo, měnič nedostupný 10 minut a zase online.":"Off. When turned on you will get: battery full, charging finished, inverter unavailable for 10 minutes and back online.",
+"Odesílám…":"Sending…","Hotovo, změna je v měniči.":"Done, the change is in the inverter.","Nepovedlo se: {0}":"Failed: {0}",
+"Po 10 minutách nečinnosti se ovládání zamklo.":"Controls were locked after 10 minutes of inactivity.","Tady upozornění nejdou.":"Notifications are not available here.",
+"Na počítači chybí balíček pywebpush (pip install pywebpush).":"The pywebpush package is missing on the computer (pip install pywebpush).",
+"Upozornění nejsou povolená v nastavení telefonu.":"Notifications are not allowed in the phone settings.","Upozornění zapnuta.":"Notifications turned on.","Upozornění vypnuta.":"Notifications turned off.",
+"Posílám zkoušku…":"Sending a test…","Zkouška odeslána. Za chvilku se ukáže na telefonu.":"Test sent. It will appear on the phone shortly.",
+"neplatná odpověď":"invalid response","dashboard neodpovídá":"dashboard is not responding","dashboard neběží (zkontroluj okno s příkazovou řádkou)":"dashboard is not running (check the command-line window)",
+/* potvrzovací okno */
+"Přepnout režim":"Switch mode","Nabít baterii":"Charge battery","Vrátit na původní":"Revert to original","Potvrdit změnu":"Confirm change","Provést":"Apply",
+"Ukázka: nic se neodešle.":"Demo: nothing is sent.","Přepnout režim měniče na „{0}“?":"Switch the inverter mode to “{0}”?",
+"Vrátit toto nastavení na původní hodnotu?":"Revert this setting to its original value?",
+"Nabíjet baterii na {0} % výkonem {1} %? Nabíjí se i ze sítě.":"Charge the battery to {0}% at {1}% power? It also charges from the grid.",
+" Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).":" When the target is reached, the mode returns by itself (after 8 hours at most).",
+"Zrušit nabíjení a vrátit režim, jaký byl před ním?":"Cancel charging and restore the mode that was active before it?",
+"Nejnižší stav baterie při vybíjení nastavit na {0} %?":"Set the minimum battery level when discharging to {0}%?",
+"Limit prodeje do sítě nastavit na {0} W?":"Set the grid export limit to {0} W?",
+"Vrátit všechna změněná nastavení na původní hodnoty?":"Revert all changed settings to their original values?",
+/* ukázka na veřejné stránce */
+"Ukázka ovládání. Tlačítka vypadají jako skutečná, ale pracují jen v tomto okně prohlížeče. Nic se neodesílá a elektrárna se nemění.":"Controls demo. The buttons look real, but they work only in this browser window. Nothing is sent and the power plant does not change.",
+"Ukázka: nic se neodeslalo a v elektrárně se nic nezměnilo.":"Demo: nothing was sent and nothing changed in the power plant.",
+"V ukázce se upozornění nezapínají.":"Notifications are not turned on in the demo.",
+/* stavový řádek */
+"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}",
+/* zprávy ze serveru */
+"Chybný přístupový kód.":"Wrong access code.","Ovládání je vypnuté (není nastaven přístupový kód GW_PIN).":"Controls are disabled (the access code GW_PIN is not set).",
+"Příliš mnoho chybných pokusů. Zkuste to za {0} s.":"Too many wrong attempts. Try again in {0} s.","Neznámý režim":"Unknown mode","Neznámá akce":"Unknown action","Neznámá skupina":"Unknown group",
+"Není co vracet, původní hodnoty nejsou uložené":"Nothing to revert, the original values are not saved","Baterie už je na {0} %, cíl je {1} %":"The battery is already at {0}%, the target is {1}%",
+"{0}: povoleno je {1} až {2}":"{0}: allowed range is {1} to {2}","{0}: neplatná hodnota":"{0}: invalid value","Výkon":"Power","Limit prodeje":"Export limit",
+"Neznámá adresa":"Unknown address","Očekává se JSON":"JSON expected","Neplatný požadavek":"Invalid request",
+"Měnič neodpověděl včas. Nevím, jestli se změna provedla, zkontrolujte stav.":"The inverter did not respond in time. It is unknown whether the change was applied, check the state.",
+"Měnič teď není dostupný. Nic se nezměnilo.":"The inverter is not available right now. Nothing was changed.",
+"Příkaz vypršel dřív, než ho měnič mohl provést. Nic se nezměnilo.":"The command expired before the inverter could execute it. Nothing was changed.",
+"Není nastavená proměnná GW_IP (IP adresa měniče v domácí síti).":"The GW_IP variable (inverter IP address on the home network) is not set.",
+"Upozornění jsou vypnutá (chybí balíček pywebpush).":"Notifications are disabled (the pywebpush package is missing).",
+"Zkouška se nepodařila odeslat. Zapněte upozornění znovu.":"The test could not be sent. Turn notifications on again.","Neplatné přihlášení k upozorněním":"Invalid notification registration",
+"OTE zatím nevrátilo žádné ceny":"OTE has not returned any prices yet","Zatím žádná data.":"No data yet.","Data se teď nepodařilo načíst.":"Could not load the data right now.",
+"Stránka je dočasně vypnutá.":"The page is temporarily switched off.","Ceny zatím nejsou.":"No prices yet."
+};
+let LANG=(()=>{let p=null;try{p=localStorage.getItem('lang');}catch(e){}
+  const q=new URLSearchParams(location.search).get('lang');   // odkaz ?lang=en otevře stránku anglicky
+  if(q==='cs'||q==='en'){try{localStorage.setItem('lang',q);}catch(e){}return q;}
+  if(p==='cs'||p==='en')return p;const n=(navigator.language||'cs').toLowerCase();return n.startsWith('cs')||n.startsWith('sk')?'cs':'en';})();
+const TPL=[];
+for(const k in EN){if(/\{\d\}/.test(k)){const re=new RegExp('^'+k.split(/\{\d\}/).map(p=>p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('(.+?)')+'$','s');TPL.push([re,EN[k]]);}}
+const fill=(s,a)=>s.replace(/\{(\d)\}/g,(m,i)=>a[+i]==null?'':a[+i]);
+function T(s){
+  if(LANG==='cs'||typeof s!=='string')return s;
+  if(EN[s]!==undefined)return EN[s];
+  for(const [re,en] of TPL){const m=re.exec(s);if(m)return fill(en,m.slice(1).map(x=>T(x)));}
+  return s;
+}
+const L=(cs,...a)=>fill(LANG==='cs'?cs:(EN[cs]!==undefined?EN[cs]:cs),a);
+const TA=['aria-label','title','placeholder'];
+function trText(n){
+  const v=n.nodeValue;
+  if(n.__l===LANG&&n.__t===v)return;
+  const o=(n.__t===v&&n.__o!==undefined)?n.__o:v;
+  let t=o;
+  if(LANG==='en'){const m=/^(\s*)([\s\S]*?)(\s*)$/.exec(o);if(m[2]){const x=T(m[2]);if(x!==m[2])t=m[1]+x+m[3];}}
+  n.__o=o;n.__t=t;n.__l=LANG;
+  if(t!==v)n.nodeValue=t;
+}
+function trAttr(el){
+  for(const a of TA){const v=el.getAttribute(a);if(v==null)continue;
+    el.__a=el.__a||{};const s=el.__a[a],o=(s&&s.t===v)?s.o:v,t=LANG==='en'?T(o):o;
+    el.__a[a]={o,t};if(t!==v)el.setAttribute(a,t);}
+}
+function trWalk(root){
+  if(root.nodeType===3){trText(root);return;}
+  if(root.nodeType!==1)return;
+  trAttr(root);
+  const tw=document.createTreeWalker(root,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,
+    {acceptNode:n=>n.nodeType===1&&(n.tagName==='SCRIPT'||n.tagName==='STYLE')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+  let n;while((n=tw.nextNode())){if(n.nodeType===3)trText(n);else trAttr(n);}
+}
+new MutationObserver(ms=>{for(const m of ms){
+  if(m.type==='childList')m.addedNodes.forEach(trWalk);
+  else if(m.type==='characterData')trText(m.target);
+  else if(m.type==='attributes')trAttr(m.target);}
+}).observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:TA});
+function applyLang(redraw){
+  document.documentElement.lang=LANG;
+  document.querySelectorAll('#langseg button').forEach(b=>b.classList.toggle('on',b.dataset.l===LANG));
+  trWalk(document.documentElement);
+  if(redraw){ctlMsg='';render();drawStats();drawPrices();if(typeof drawCtl==='function')drawCtl();}
+}
 const C=["--s1","--s2","--s3","--s4"], NAMES=["Výroba FVE","Spotřeba domu","Síť","Baterie"];
 let HIST=[], NOW=null, ERR=null, hours=6, hover=null, STATS=null, per='30';
 const vis=new Set([0,1]);
 
-const fmtW=w=>Math.abs(w)>=1000?(w/1000).toFixed(2).replace('.',',')+' kW':Math.round(w)+' W';
-const fmtK=(v,d)=>{if(v==null||isNaN(v))return '–';d=d==null?(Math.abs(v)>=100?0:1):d;return Number(v).toLocaleString('cs-CZ',{minimumFractionDigits:d,maximumFractionDigits:d});};
-const pct=v=>v==null||!isFinite(v)?'–':Math.round(v*100)+' %';
-const hhmm=t=>new Date(t*1000).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
-const hhmmss=t=>new Date(t*1000).toLocaleTimeString('cs-CZ');
-const MON=['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
-const lab=l=>l.length===4?l:l.length===7?MON[+l.slice(5)-1]+' '+l.slice(2,4):(+l.slice(8))+'. '+(+l.slice(5,7))+'.';
-const labFull=l=>l.length===4?l:l.length===7?MON[+l.slice(5)-1]+' '+l.slice(0,4):(+l.slice(8))+'. '+(+l.slice(5,7))+'. '+l.slice(0,4);
+const LOC=()=>LANG==='en'?'en-GB':'cs-CZ';
+const PC=n=>n+(LANG==='en'?'%':' %');
+const fmtW=w=>Math.abs(w)>=1000?(w/1000).toFixed(2).replace('.',LANG==='en'?'.':',')+' kW':Math.round(w)+' W';
+const fmtK=(v,d)=>{if(v==null||isNaN(v))return '–';d=d==null?(Math.abs(v)>=100?0:1):d;return Number(v).toLocaleString(LOC(),{minimumFractionDigits:d,maximumFractionDigits:d});};
+const pct=v=>v==null||!isFinite(v)?'–':PC(Math.round(v*100));
+const hhmm=t=>new Date(t*1000).toLocaleTimeString(LOC(),{hour:'2-digit',minute:'2-digit'});
+const hhmmss=t=>new Date(t*1000).toLocaleTimeString(LOC());
+const MONS={cs:['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'],en:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']};
+const dm=(d,m)=>LANG==='en'?d+' '+MONS.en[m-1]:d+'. '+m+'.';
+const lab=l=>l.length===4?l:l.length===7?MONS[LANG][+l.slice(5)-1]+' '+l.slice(2,4):dm(+l.slice(8),+l.slice(5,7));
+const labFull=l=>l.length===4?l:l.length===7?MONS[LANG][+l.slice(5)-1]+' '+l.slice(0,4):dm(+l.slice(8),+l.slice(5,7))+' '+l.slice(0,4);
 
 /* ---------- tok energie ---------- */
 function icon(kind,x,y,soc){
@@ -741,11 +896,11 @@ function drawFlow(){
   const n=NOW||{pv:0,load:0,grid:0,bat:0,soc:0};
   const pvw=n.pv,gw=n.grid,bw=n.bat,lw=n.load;
   const mob=window.innerWidth<700;
-  const L=mob?{vb:'0 0 400 504',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
+  const LY=mob?{vb:'0 0 400 504',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
      p_pv:'M100 118 C100 190 100 245 135 258',p_gr:'M100 386 C100 350 105 325 135 318',p_ld:'M265 258 C300 245 300 190 300 118',p_bt:'M300 386 C300 350 295 325 265 318'}
    :{vb:'0 0 900 390',pv:[10,36],ld:[700,36],gr:[10,242],bt:[700,242],dx:0,dy:0,
      p_pv:'M200 92 C300 92 310 160 392 170',p_gr:'M200 298 C300 298 310 230 392 220',p_ld:'M508 170 C590 160 600 92 700 92',p_bt:'M700 298 C600 298 590 230 508 220'};
-  $('flow').setAttribute('viewBox',L.vb);
+  $('flow').setAttribute('viewBox',LY.vb);
   let s=`<defs>
    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
    <filter id="sh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity=".14"/></filter>
@@ -753,23 +908,23 @@ function drawFlow(){
    <linearGradient id="roof" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:${css('--gold2')}"/><stop offset="1" style="stop-color:${css('--gold3')}"/></linearGradient>
    <radialGradient id="halo"><stop offset="0" style="stop-color:${css('--gold')};stop-opacity:.34"/><stop offset="1" style="stop-color:${css('--gold')};stop-opacity:0"/></radialGradient>
   </defs>`;
-  s+=`<circle cx="${450+L.dx}" cy="${200+L.dy}" r="150" fill="url(#halo)" opacity="${pvw>=20?1:.4}"/>`;
-  s+=flowline(L.p_pv,css('--s1'),pvw,false,'fl_pv');
-  s+=flowline(L.p_gr,css('--s3'),gw,gw<0,'fl_gr');
-  s+=flowline(L.p_ld,css('--s2'),lw,false,'fl_ld');
-  s+=flowline(L.p_bt,css('--s4'),bw,bw<0,'fl_bt');
+  s+=`<circle cx="${450+LY.dx}" cy="${200+LY.dy}" r="150" fill="url(#halo)" opacity="${pvw>=20?1:.4}"/>`;
+  s+=flowline(LY.p_pv,css('--s1'),pvw,false,'fl_pv');
+  s+=flowline(LY.p_gr,css('--s3'),gw,gw<0,'fl_gr');
+  s+=flowline(LY.p_ld,css('--s2'),lw,false,'fl_ld');
+  s+=flowline(LY.p_bt,css('--s4'),bw,bw<0,'fl_bt');
   const lit=lw>=20;
-  s+=`<g transform="translate(${L.dx} ${L.dy})"><g filter="url(#sh)"><path d="M366 178 L450 98 L534 178 Z" fill="url(#roof)" stroke="${css('--surface')}" stroke-width="6" stroke-linejoin="round"/>
+  s+=`<g transform="translate(${LY.dx} ${LY.dy})"><g filter="url(#sh)"><path d="M366 178 L450 98 L534 178 Z" fill="url(#roof)" stroke="${css('--surface')}" stroke-width="6" stroke-linejoin="round"/>
   <rect x="385" y="168" width="130" height="104" rx="10" fill="url(#ng)" stroke="${css('--line')}" stroke-width="1.5"/></g>
   <rect x="402" y="182" width="26" height="22" rx="4" fill="${css('--gold')}" opacity="${lit?.9:.2}"/><rect x="472" y="182" width="26" height="22" rx="4" fill="${css('--gold')}" opacity="${lit?.9:.2}"/>
   <text x="450" y="232" text-anchor="middle" style="font-size:19px;font-weight:700">Dům</text>
-  <text x="450" y="251" text-anchor="middle" class="s">${NOW&&NOW.model?NOW.model:'měnič'}${NOW&&NOW.temp!=null?' · '+NOW.temp.toFixed(0)+' °C':''}</text></g>`;
-  s+=node(L.pv[0],L.pv[1],'sun','Solár (FVE)',fmtW(pvw),pvw>=20?'vyrábí':'nevyrábí',0,pvw>=20);
-  s+=node(L.gr[0],L.gr[1],'grid','Síť',fmtW(Math.abs(gw)),gw>=20?'odběr ze sítě':gw<=-20?'dodávka do sítě':'bez výměny',0,Math.abs(gw)>=20);
-  s+=node(L.ld[0],L.ld[1],'load','Spotřeba domu',fmtW(lw),'aktuální odběr',0,lw>=20);
-  s+=node(L.bt[0],L.bt[1],'bat','Baterie '+Math.round(n.soc)+' %',fmtW(Math.abs(bw)),bw>=20?'vybíjí se':bw<=-20?'nabíjí se':'nečinná',n.soc,Math.abs(bw)>=20);
+  <text x="450" y="251" text-anchor="middle" class="s">${NOW&&NOW.model?NOW.model:L('měnič')}${NOW&&NOW.temp!=null?' · '+NOW.temp.toFixed(0)+' °C':''}</text></g>`;
+  s+=node(LY.pv[0],LY.pv[1],'sun','Solár (FVE)',fmtW(pvw),pvw>=20?'vyrábí':'nevyrábí',0,pvw>=20);
+  s+=node(LY.gr[0],LY.gr[1],'grid','Síť',fmtW(Math.abs(gw)),gw>=20?'odběr ze sítě':gw<=-20?'dodávka do sítě':'bez výměny',0,Math.abs(gw)>=20);
+  s+=node(LY.ld[0],LY.ld[1],'load','Spotřeba domu',fmtW(lw),'aktuální odběr',0,lw>=20);
+  s+=node(LY.bt[0],LY.bt[1],'bat',L('Baterie {0}',PC(Math.round(n.soc))),fmtW(Math.abs(bw)),bw>=20?'vybíjí se':bw<=-20?'nabíjí se':'nečinná',n.soc,Math.abs(bw)>=20);
   $('flow').innerHTML=s;
-  $('modeinfo').textContent=NOW&&NOW.work_mode?('režim: '+NOW.work_mode+(NOW.bat_mode?' · baterie: '+NOW.bat_mode:'')):'';
+  $('modeinfo').textContent=NOW&&NOW.work_mode?(L('režim: {0}',NOW.work_mode)+(NOW.bat_mode?L(' · baterie: {0}',NOW.bat_mode):'')):'';
 }
 function drawToday(){
   if(!NOW)return;
@@ -809,7 +964,7 @@ $('chart').addEventListener('mousemove',e=>{
   let best=0,bd=1e9;s.pts.forEach((r,i)=>{const dd=Math.abs(s.X(r[0])-x);if(dd<bd){bd=dd;best=i;}});
   hover=best;drawChart();
   const r=s.pts[best],tip=$('tip');
-  tip.innerHTML=`<b>${hhmmss(r[0])}</b>`+NAMES.map((n,k)=>`<div><span><i style="background:${css(C[k])}"></i>${n}</span><span>${fmtW(r[k+1])}</span></div>`).join('')+`<div><span>Nabití baterie</span><span>${r[5].toFixed(0)} %</span></div>`;
+  tip.innerHTML=`<b>${hhmmss(r[0])}</b>`+NAMES.map((n,k)=>`<div><span><i style="background:${css(C[k])}"></i>${n}</span><span>${fmtW(r[k+1])}</span></div>`).join('')+`<div><span>Nabití baterie</span><span>${PC(r[5].toFixed(0))}</span></div>`;
   tip.style.display='block';const left=(s.X(r[0])+16);tip.style.left=(left+210>s.W?left-232:left)+'px';tip.style.top='10px';
 });
 $('chart').addEventListener('mouseleave',()=>{hover=null;$('tip').style.display='none';drawChart();});
@@ -818,7 +973,7 @@ $('tblbtn').onclick=()=>{const t=$('tbl');t.style.display=t.style.display==='blo
 function drawTable(){
   const tmin=(HIST.length?HIST[HIST.length-1][0]:0)-hours*3600;
   const rows=HIST.filter(r=>r[0]>=tmin).slice(-60).reverse();
-  $('tbody').innerHTML=rows.map(r=>`<tr><td>${hhmmss(r[0])}</td><td>${fmtW(r[1])}</td><td>${fmtW(r[2])}</td><td>${fmtW(r[3])}</td><td>${fmtW(r[4])}</td><td>${r[5].toFixed(0)} %</td></tr>`).join('');
+  $('tbody').innerHTML=rows.map(r=>`<tr><td>${hhmmss(r[0])}</td><td>${fmtW(r[1])}</td><td>${fmtW(r[2])}</td><td>${fmtW(r[3])}</td><td>${fmtW(r[4])}</td><td>${PC(r[5].toFixed(0))}</td></tr>`).join('');
 }
 
 /* ---------- analýza ---------- */
@@ -840,20 +995,20 @@ function drawStats(){
   if(!P){note.style.display='block';note.textContent='Zatím nejsou uložená žádná počítadla energie. Počkej pár minut, než se uloží první záznam.';
     $('kpis').innerHTML='';$('ratios').innerHTML='';$('bars').innerHTML='';return;}
   const [pv,load,imp,exp,chg,dis]=P.tot;
-  const msgs=[], dfmt=x=>new Date(x).toLocaleDateString('cs-CZ');
-  if(per==='all')msgs.push(P.yearly?'Celkové součty jsou počítadla měniče a elektroměru. Roční sloupce jsou ze SEMS (od '+new Date(STATS.since*1000).toLocaleDateString('cs-CZ')+'), spotřeba je dopočtená.':'Celkové hodnoty jsou celoživotní počítadla měniče a elektroměru. Sloupce níže se plní od '+new Date(STATS.since*1000).toLocaleDateString('cs-CZ')+'.');
-  else if(P.days<P.want)msgs.push((P.first?'Data mám od '+dfmt(P.first)+'. ':'')+'K dispozici je zatím '+P.days+' z '+P.want+' dní, součty proto zahrnují jen tuto dobu.');
+  const msgs=[], dfmt=x=>new Date(x).toLocaleDateString(LOC());
+  if(per==='all')msgs.push(P.yearly?L('Celkové součty jsou počítadla měniče a elektroměru. Roční sloupce jsou ze SEMS (od {0}), spotřeba je dopočtená.',dfmt(STATS.since*1000)):L('Celkové hodnoty jsou celoživotní počítadla měniče a elektroměru. Sloupce níže se plní od {0}.',dfmt(STATS.since*1000)));
+  else if(P.days<P.want)msgs.push((P.first?L('Data mám od {0}.',dfmt(P.first))+' ':'')+L('K dispozici je zatím {0} z {1} dní, součty proto zahrnují jen tuto dobu.',P.days,P.want));
   const O=STATS.outage, hasEst=P.bars.some(b=>b.e>0);
-  if(O&&(P.estDays>0||(per==='all'&&hasEst)))msgs.push('Šrafované sloupce jsou ODHAD za výpadek dat ve SEMS ('+dfmt(O.from)+' až '+dfmt(O.to)+'): chybějící energie se dopočítala z rozdílu počítadel měniče a sezónního průběhu z minulých let. Výroba za výpadek ≈ '+fmtK(O.gap[0],0)+' kWh.');
+  if(O&&(P.estDays>0||(per==='all'&&hasEst)))msgs.push(L('Šrafované sloupce jsou ODHAD za výpadek dat ve SEMS ({0} až {1}): chybějící energie se dopočítala z rozdílu počítadel měniče a sezónního průběhu z minulých let. Výroba za výpadek ≈ {2} kWh.',dfmt(O.from),dfmt(O.to),fmtK(O.gap[0],0)));
   if(msgs.length){note.style.display='block';note.textContent=msgs.join(' ');}else note.style.display='none';
   const own=Math.max(0,load-imp), gridL=Math.min(imp,load);
   const selfCons=pv>0?(pv-exp)/pv:null, selfSuff=load>0?own/load:null;
   const k=(c,l,v,sub)=>`<div class="kpi"><div class="lab"><span class="sw" style="background:${css(c)}"></span>${l}</div><div class="val">${fmtK(v)}<small>kWh</small></div><div class="sub">${sub}</div></div>`;
   $('kpis').innerHTML=
-    k('--s1','Vyrobeno',pv,'z toho '+pct(selfCons)+' využito doma'+(P.est&&P.est[0]>0?' · odhad '+fmtK(P.est[0],0)+' kWh':''))+
-    k('--s2','Spotřebováno doma',load,'z vlastní výroby a baterie '+pct(selfSuff))+
-    k('--s3','Prodáno do sítě',exp,pct(pv>0?exp/pv:null)+' výroby')+
-    k('--s5','Nakoupeno ze sítě',imp,pct(load>0?imp/load:null)+' spotřeby');
+    k('--s1','Vyrobeno',pv,L('z toho {0} využito doma',pct(selfCons))+(P.est&&P.est[0]>0?L(' · odhad {0} kWh',fmtK(P.est[0],0)):''))+
+    k('--s2','Spotřebováno doma',load,L('z vlastní výroby a baterie {0}',pct(selfSuff)))+
+    k('--s3','Prodáno do sítě',exp,L('{0} výroby',pct(pv>0?exp/pv:null)))+
+    k('--s5','Nakoupeno ze sítě',imp,L('{0} spotřeby',pct(load>0?imp/load:null)));
   $('ratios').innerHTML=
     `<div class="ratio"><h3>Soběstačnost</h3><div class="donutrow">${donut(selfSuff,'--s1',pct(selfSuff))}<p>Podíl spotřeby domu, který pokryla vlastní výroba (přímo nebo přes baterii).</p></div></div>
      <div class="ratio"><h3>Vlastní spotřeba výroby</h3><div class="donutrow">${donut(selfCons,'--s2',pct(selfCons))}<p>Podíl vyrobené energie, který zůstal v domě a neodešel do sítě.</p></div></div>
@@ -891,7 +1046,7 @@ function drawBars(P){
 $('bars').addEventListener('mousemove',e=>{
   const t=e.target.closest?e.target:null;if(!t||!t.classList.contains('hit'))return;
   const s=$('bars')._s,b=s.bars[+t.dataset.i],tip=$('btip');
-  tip.innerHTML=`<b>${labFull(b.l)}</b>`+SER.map(x=>`<div><span><i style="background:${css(x.c)}"></i>${x.n}</span><span>${fmtK(b.v[x.k])} kWh</span></div>`).join('')+(b.e>0?`<div style="margin-top:4px;color:var(--ink2)"><span>▨ odhad</span><span>${Math.round(b.e*100)} % období</span></div>`:'');
+  tip.innerHTML=`<b>${labFull(b.l)}</b>`+SER.map(x=>`<div><span><i style="background:${css(x.c)}"></i>${x.n}</span><span>${fmtK(b.v[x.k])} kWh</span></div>`).join('')+(b.e>0?`<div style="margin-top:4px;color:var(--ink2)"><span>▨ odhad</span><span>${L('{0} % období',Math.round(b.e*100))}</span></div>`:'');
   tip.style.display='block';const rect=$('bars').getBoundingClientRect(),px=(+t.dataset.i+.5)*s.gw+s.m.l,sc=rect.width/s.W;
   const left=px*sc+14;tip.style.left=(left+210>rect.width?left-236:left)+'px';tip.style.top='10px';
 });
@@ -899,7 +1054,7 @@ $('bars').addEventListener('mouseleave',()=>{$('btip').style.display='none';});
 function drawTable2(P){
   const rows=P.bars.slice().reverse();
   $('tbl2').innerHTML='<table><thead><tr><th>Období</th><th>Výroba</th><th>Spotřeba</th><th>Prodej</th><th>Nákup</th><th>Nabito</th><th>Vybito</th></tr></thead><tbody>'+
-   rows.map(b=>`<tr${b.e>=0.5?' style="font-style:italic;color:var(--ink2)"':''}><td>${labFull(b.l)}${b.e>0?' ~odhad':''}</td><td>${fmtK(b.v[0])}</td><td>${fmtK(b.v[1])}</td><td>${fmtK(b.v[3])}</td><td>${fmtK(b.v[2])}</td><td>${fmtK(b.v[4])}</td><td>${fmtK(b.v[5])}</td></tr>`).join('')+'</tbody></table>';
+   rows.map(b=>`<tr${b.e>=0.5?' style="font-style:italic;color:var(--ink2)"':''}><td>${labFull(b.l)}${b.e>0?L(' ~odhad'):''}</td><td>${fmtK(b.v[0])}</td><td>${fmtK(b.v[1])}</td><td>${fmtK(b.v[3])}</td><td>${fmtK(b.v[2])}</td><td>${fmtK(b.v[4])}</td><td>${fmtK(b.v[5])}</td></tr>`).join('')+'</tbody></table>';
 }
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
 $('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
@@ -911,7 +1066,7 @@ function drawPrices(){
   const now=$('prnow'),sum=$('prsum'),rows=$('prrows'),tabs=$('prday'),foot=$('prfoot');
   const days=PR&&PR.days?Object.keys(PR.days).sort():[];
   if(!PR||!days.length){
-    now.innerHTML='<p class="hint">'+(PR?'Ceny z OTE se nepodařilo načíst'+(PR.err?' ('+PR.err+')':'')+'. Zkusím to znovu za pár minut.':'Načítám ceny…')+'</p>';
+    now.innerHTML='<p class="hint">'+(PR?L('Ceny z OTE se nepodařilo načíst{0}. Zkusím to znovu za pár minut.',PR.err?' ('+T(PR.err)+')':''):'Načítám ceny…')+'</p>';
     sum.style.display='none';rows.innerHTML='';tabs.innerHTML='';foot.textContent='';return;
   }
   if(!prDay||!PR.days[prDay])prDay=PR.days[PR.today]?PR.today:days[0];
@@ -930,15 +1085,15 @@ function drawPrices(){
   }
   sum.style.display='grid';
   sum.innerHTML=[['nejlevnější',lo,iLo],['průměr',avg,null],['nejdražší',hi,iHi]]
-    .map(([l,v,i])=>`<div><div class="v">${fmtK(v,dec)}</div><div class="l">${l}${i!=null?' · '+hh(i)+' h':''}</div></div>`).join('');
+    .map(([l,v,i])=>`<div><div class="v">${fmtK(v,dec)}</div><div class="l">${T(l)}${i!=null?' · '+hh(i)+' h':''}</div></div>`).join('');
   const s=vals.slice().sort((a,b)=>a-b), q25=s[Math.floor(n*.25)], q75=s[Math.floor(n*.75)], base=Math.min(0,lo), span=(hi-base)||1;
   rows.innerHTML=vals.map((v,h)=>{
     const col=hi===lo?'--gold3':v<=q25?'--good':v>=q75?'--s4':'--gold3', w=Math.max(1,(v-base)/span*100);
     return `<div class="prrow${isToday&&h===nowH?' now':''}"><span>${hh(h)}</span><i style="width:${w.toFixed(1)}%;background:${css(col)}"></i><b>${fmtK(v,dec)}</b></div>`;
   }).join('');
-  foot.textContent='Zdroj: burza OTE'+(kc?', kurz ČNB '+fmtK(PR.kurz,3)+' Kč/EUR':'')+'. '+
-    (PR.marze?'Včetně přirážky '+fmtK(PR.marze,2)+' Kč/kWh. ':'Stejná cena jako v aplikaci dodavatele. ')+
-    (days.length<2?'Ceny na zítřek OTE zveřejňuje odpoledne.':'');
+  foot.textContent=L('Zdroj: burza OTE')+(kc?L(', kurz ČNB {0} Kč/EUR',fmtK(PR.kurz,3)):'')+'. '+
+    (PR.marze?L('Včetně přirážky {0} Kč/kWh.',fmtK(PR.marze,2))+' ':L('Stejná cena jako v aplikaci dodavatele.')+' ')+
+    (days.length<2?L('Ceny na zítřek OTE zveřejňuje odpoledne.'):'');
 }
 async function tickPrices(){
   try{PR=await (await fetch('/api/ceny')).json();}catch(e){}
@@ -952,7 +1107,7 @@ const MODE_LBL={GENERAL:'Základní',ECO:'Eco',SELF_USE:'Vlastní spotřeba',PEA
 function priceTxt(){
   if(!PR||!PR.days||!PR.days[PR.today]||PR.kurz==null)return '';
   const e=PR.days[PR.today][new Date().getHours()];
-  return e==null?'':' Cena elektřiny teď: '+fmtK(e/1000*PR.kurz+(PR.marze||0),2)+' Kč/kWh.';
+  return e==null?'':L(' Cena elektřiny teď: {0} Kč/kWh.',fmtK(e/1000*PR.kurz+(PR.marze||0),2));
 }
 /*PUBLIC-STRIP-START*/async function ctlLoad(){
   ctlMsg='';
@@ -968,8 +1123,8 @@ async function ctlPost(action,params){
     const j=await r.json();
     if(r.status===403){PIN=null;UNLOCKED=false;}
     if(j.ok){CTL=j.status;CTLERR=null;UNLOCKED=true;ctlMsg=action==='overit'?'':'Hotovo, změna je v měniči.';delete cv.ms;delete cv.ex;}
-    else ctlMsg='Nepovedlo se: '+(j.error||r.status);
-  }catch(e){ctlMsg='Nepovedlo se: '+e.message;}
+    else ctlMsg=L('Nepovedlo se: {0}',T(j.error||String(r.status)));
+  }catch(e){ctlMsg=L('Nepovedlo se: {0}',e.message);}
   ctlBusy=false;drawCtl();
 }
 /*PUBLIC-STRIP-END*/const ASKT={mode:'Přepnout režim',charge:'Nabít baterii',min_soc:'Nejnižší stav baterie',export:'Limit prodeje do sítě',revert:'Vrátit na původní'};
@@ -996,7 +1151,7 @@ function drawCtl(){
   if(!CTLEN){st.textContent='vypnuto';
     el.innerHTML='<p class="hint">Ovládání je vypnuté, protože není nastavený přístupový kód. V PowerShellu spusťte <code>setx GW_PIN "váš-kód"</code> (aspoň 6 znaků) a dashboard znovu spusťte.</p>';return;}
   if(!CTL){st.textContent='nedostupné';
-    el.innerHTML='<p class="hint">Měnič teď neodpovídá'+(CTLERR?' ('+CTLERR+')':'')+'.</p><button class="btn" id="cretry">Zkusit znovu</button>';
+    el.innerHTML='<p class="hint">'+L('Měnič teď neodpovídá{0}.',CTLERR?' ('+T(CTLERR)+')':'')+'</p><button class="btn" id="cretry">Zkusit znovu</button>';
     $('cretry').onclick=ctlLoad;return;}
   if(!UNLOCKED){st.textContent='zamčeno';
     el.innerHTML='<input class="pin" id="pin" type="password" autocomplete="off" placeholder="Přístupový kód"><button class="btn go" id="unlock">Odemknout</button><p class="cmsg" id="ctlmsg">'+ctlMsg+'</p>';
@@ -1005,20 +1160,20 @@ function drawCtl(){
   st.textContent='odemčeno';
   const S=CTL,soc=NOW?Math.round(NOW.soc):null,P=S.puvodne||{};
   const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??80, cp=cv.cp??100;
-  const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">Vrátit na původní (${txt(P[g])})</button>`:'';
+  const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">${L('Vrátit na původní ({0})',txt(P[g]))}</button>`:'';
   let h=`<div class="cgrp" style="border-top:0;padding-top:0"><h3>Režim</h3><div class="chips">`+
     ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}">${MODE_LBL[m]}</button>`).join('')+
-    `</div>`+(S.work_mode==='OFF_GRID'?'<p class="hint">Měnič je v ostrovním režimu, ten odsud nejde měnit.</p>':'')+back('mode',x=>MODE_LBL[x]||x)+`</div>`;
+    `</div>`+(S.work_mode==='OFF_GRID'?'<p class="hint">Měnič je v ostrovním režimu, ten odsud nejde měnit.</p>':'')+back('mode',x=>T(MODE_LBL[x]||x))+`</div>`;
   h+=`<div class="cgrp"><h3>Nabít baterii teď</h3>`+
-    (S.charge?`<div class="chargenote">Probíhá nabíjení do ${S.charge.target} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
-    `<div class="hint">Baterie teď: ${soc==null?'–':soc+' %'}. Nabíjí se i ze sítě.</div>
-    <label>Cílový stav <b id="cs_v">${cs} %</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
-    <label>Výkon nabíjení <b id="cp_v">${cp} %</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
+    (S.charge?`<div class="chargenote">${L('Probíhá nabíjení do {0} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.',S.charge.target)}</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
+    `<div class="hint">${L('Baterie teď: {0}. Nabíjí se i ze sítě.',soc==null?'–':PC(soc))}</div>
+    <label>Cílový stav <b id="cs_v">${PC(cs)}</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
+    <label>Výkon nabíjení <b id="cp_v">${PC(cp)}</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
     <button class="btn go" id="cgo">Nabíjet</button>`)+`</div>`;
-  h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: ${S.min_soc} %.</div>
-    <label>Nejnižší stav <b id="ms_v">${ms} %</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
-    <button class="btn go" id="mgo">Nastavit</button>${back('min_soc',x=>x+' %')}</div>`;
-  h+=`<div class="cgrp"><h3>Limit prodeje do sítě</h3><div class="hint">Teď: ${fmtK(S.export_limit,0)} W. Nula znamená neprodávat.</div>
+  h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">${L('Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: {0} %.',S.min_soc)}</div>
+    <label>Nejnižší stav <b id="ms_v">${PC(ms)}</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
+    <button class="btn go" id="mgo">Nastavit</button>${back('min_soc',x=>PC(x))}</div>`;
+  h+=`<div class="cgrp"><h3>Limit prodeje do sítě</h3><div class="hint">${L('Teď: {0} W. Nula znamená neprodávat.',fmtK(S.export_limit,0))}</div>
     <label>Limit <b id="ex_v">${fmtK(ex,0)} W</b></label><input type="range" id="ex" min="0" max="10000" step="100" value="${ex}">
     <button class="btn go" id="ego">Nastavit</button>${back('export',x=>fmtK(x,0)+' W')}</div>`;
   if(Object.keys(P).length>1)h+=`<div class="cgrp"><button class="btn" id="call">Vrátit vše na původní</button></div>`;
@@ -1026,14 +1181,14 @@ function drawCtl(){
     <button class="btn go" id="pon" style="display:none">Zapnout</button><button class="btn" id="ptest" style="display:none">Poslat zkoušku</button><button class="btn" id="poff" style="display:none">Vypnout</button></div>`;
   h+=`<p class="cmsg" id="ctlmsg">${ctlMsg}</p>`;
   el.innerHTML=h;
-  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask('Přepnout režim měniče na „'+MODE_LBL[m]+'“?','mode',{mode:m});});
+  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask(L('Přepnout režim měniče na „{0}“?',T(MODE_LBL[m])),'mode',{mode:m});});
   el.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>ask('Vrátit toto nastavení na původní hodnotu?','revert',{group:b.dataset.back}));
   [['cs','%'],['cp','%'],['ms','%'],['ex','W']].forEach(([id,u])=>{const r=$(id);if(!r)return;
-    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=(id==='ex'?fmtK(r.value,0):r.value)+' '+u;};});
-  if($('cgo'))$('cgo').onclick=()=>ask('Nabíjet baterii na '+$('cs').value+' % výkonem '+$('cp').value+' %? Nabíjí se i ze sítě.'+priceTxt()+' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).','charge',{target:+$('cs').value,power:+$('cp').value});
+    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=id==='ex'?fmtK(r.value,0)+' W':PC(r.value);};});
+  if($('cgo'))$('cgo').onclick=()=>ask(L('Nabíjet baterii na {0} % výkonem {1} %? Nabíjí se i ze sítě.',$('cs').value,$('cp').value)+priceTxt()+L(' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).'),'charge',{target:+$('cs').value,power:+$('cp').value});
   if($('cstop'))$('cstop').onclick=()=>ask('Zrušit nabíjení a vrátit režim, jaký byl před ním?','revert',{group:'charge'});
-  $('mgo').onclick=()=>ask('Nejnižší stav baterie při vybíjení nastavit na '+$('ms').value+' %?','min_soc',{value:+$('ms').value});
-  $('ego').onclick=()=>ask('Limit prodeje do sítě nastavit na '+fmtK($('ex').value,0)+' W?','export',{value:+$('ex').value});
+  $('mgo').onclick=()=>ask(L('Nejnižší stav baterie při vybíjení nastavit na {0} %?',$('ms').value),'min_soc',{value:+$('ms').value});
+  $('ego').onclick=()=>ask(L('Limit prodeje do sítě nastavit na {0} W?',fmtK($('ex').value,0)),'export',{value:+$('ex').value});
   if($('call'))$('call').onclick=()=>ask('Vrátit všechna změněná nastavení na původní hodnoty?','revert',{group:'all'});
   $('pon').onclick=pushOn;$('poff').onclick=pushOff;$('ptest').onclick=pushTest;
   pushState();
@@ -1058,7 +1213,7 @@ async function pushState(){
 async function pushPost(path,body){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({pin:PIN},body||{}))});
   const j=await r.json().catch(()=>({ok:false,error:'neplatná odpověď'}));
-  if(r.status===403){PIN=null;UNLOCKED=false;ctlMsg=j.error||'';drawCtl();}
+  if(r.status===403){PIN=null;UNLOCKED=false;ctlMsg=T(j.error||'');drawCtl();}
   return j;
 }
 async function pushOn(){
@@ -1070,10 +1225,15 @@ async function pushOn(){
     if(await Notification.requestPermission()!=='granted'){say('Upozornění nejsou povolená v nastavení telefonu.');return;}
     let s=await reg.pushManager.getSubscription();
     if(!s)s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(k.key)});
-    const j=await pushPost('/api/push/prihlasit',{subscription:s.toJSON()});
-    if(j.ok)say('Upozornění zapnuta.');else if(PIN!==null)say('Nepovedlo se: '+j.error);
-  }catch(e){say('Nepovedlo se: '+e.message);}
+    const j=await pushPost('/api/push/prihlasit',{subscription:s.toJSON(),lang:LANG});
+    if(j.ok)say('Upozornění zapnuta.');else if(PIN!==null)say(L('Nepovedlo se: {0}',T(j.error)));
+  }catch(e){say(L('Nepovedlo se: {0}',e.message));}
   pushState();
+}
+async function pushLangSync(){
+  if(!PIN||!UNLOCKED)return;
+  try{const reg=await pushReg(),s=reg&&await reg.pushManager.getSubscription();
+    if(s)await pushPost('/api/push/prihlasit',{subscription:s.toJSON(),lang:LANG});}catch(e){}
 }
 async function pushOff(){
   ctlAct=Date.now();
@@ -1081,13 +1241,13 @@ async function pushOff(){
     const reg=await pushReg(),s=reg&&await reg.pushManager.getSubscription();
     if(s){await pushPost('/api/push/odhlasit',{endpoint:s.endpoint});await s.unsubscribe();}
     say('Upozornění vypnuta.');
-  }catch(e){say('Nepovedlo se: '+e.message);}
+  }catch(e){say(L('Nepovedlo se: {0}',e.message));}
   pushState();
 }
 async function pushTest(){
   ctlAct=Date.now();say('Posílám zkoušku…');
   const j=await pushPost('/api/push/test');
-  if(PIN!==null)say(j.ok?'Zkouška odeslána. Za chvilku se ukáže na telefonu.':'Nepovedlo se: '+j.error);
+  if(PIN!==null)say(j.ok?'Zkouška odeslána. Za chvilku se ukáže na telefonu.':L('Nepovedlo se: {0}',T(j.error)));
 }
 setInterval(()=>{if(UNLOCKED&&Date.now()-ctlAct>600000){PIN=null;UNLOCKED=false;ctlMsg='Po 10 minutách nečinnosti se ovládání zamklo.';drawCtl();}},30000);
 setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='range'||a.id==='pin')))ctlLoad();},60000);
@@ -1097,10 +1257,10 @@ setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='ran
 function render(){
   drawFlow();drawToday();
   const d=$('dot'),s=$('status');
-  if(ERR){d.className='dot err';s.textContent='výpadek spojení s měničem: '+ERR;}
+  if(ERR){d.className='dot err';s.textContent=L('výpadek spojení s měničem: {0}',T(ERR));}
   else if(NOW){const age=Date.now()/1000-NOW.ts;
-    if(age>180){d.className='dot err';s.textContent='data jsou stará '+Math.round(age/60)+' min (naposledy '+hhmm(NOW.ts)+')';}
-    else{d.className='dot ok';s.textContent='živě · '+hhmmss(NOW.ts);}}
+    if(age>180){d.className='dot err';s.textContent=L('data jsou stará {0} min (naposledy {1})',Math.round(age/60),hhmm(NOW.ts));}
+    else{d.className='dot ok';s.textContent=L('živě · {0}',hhmmss(NOW.ts));}}
   if(NOW)$('model').textContent=NOW.model||'';
   drawChart();drawTable();
 }
@@ -1125,6 +1285,8 @@ function applyTheme(redraw){
 document.querySelectorAll('#themeseg button').forEach(b=>b.onclick=()=>{try{localStorage.setItem('theme',b.dataset.t);}catch(e){}applyTheme(true);});
 (mqLight.addEventListener?mqLight.addEventListener.bind(mqLight,'change'):mqLight.addListener.bind(mqLight))(()=>{if(themePref()==='auto')applyTheme(true);});
 applyTheme(false);
+document.querySelectorAll('#langseg button').forEach(b=>b.onclick=()=>{LANG=b.dataset.l;try{localStorage.setItem('lang',LANG);}catch(e){}applyLang(true);if(typeof pushLangSync==='function')pushLangSync();});
+applyLang(false);
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
 tick();tickStats();tickPrices();ctlLoad();setInterval(tick,5000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}
@@ -1288,11 +1450,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(503, {"ok": False, "error": "Upozornění jsou vypnutá (chybí balíček pywebpush)."})
         try:
             if path == "/api/push/prihlasit":
-                upozorneni.subscribe(req.get("subscription"))
+                upozorneni.subscribe(req.get("subscription"), req.get("lang"))
             elif path == "/api/push/odhlasit":
                 upozorneni.unsubscribe(str(req.get("endpoint", "")))
             else:
-                sent = upozorneni.notify("Zkouška upozornění", "Pokud to vidíš, upozornění fungují.", "test", wait=True)
+                sent = upozorneni.notify("Zkouška upozornění", "Pokud to vidíš, upozornění fungují.", "test", wait=True,
+                                         en=("Test notification", "If you can see this, notifications work."))
                 if not sent:
                     return self._json(502, {"ok": False, "error": "Zkouška se nepodařila odeslat. Zapněte upozornění znovu."})
         except ValueError as e:
