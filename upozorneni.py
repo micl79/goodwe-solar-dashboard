@@ -5,7 +5,8 @@ Soubory vedle skriptu (osobní, v .gitignore):
   push_klic.json        - klíč, kterým dashboard podepisuje upozornění (vytvoří se sám při prvním spuštění)
   push_odberatele.json  - telefony, které si upozornění zapnuly
 
-Co se oznamuje: baterie je plná, nabíjení z dashboardu skončilo, měnič je 10 minut nedostupný a zase online.
+Co se oznamuje: baterie je plná, nabíjení z dashboardu skončilo, měnič je 10 minut nedostupný a zase online,
+jednou denně souhrn zítřejších spotových cen (nejlevnější hodiny).
 """
 import base64
 import json
@@ -24,6 +25,7 @@ except Exception:  # noqa: BLE001 - balíček není nainstalovaný, upozornění
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEY_PATH = os.path.join(HERE, "push_klic.json")
 SUBS_PATH = os.path.join(HERE, "push_odberatele.json")
+STAV_PATH = os.path.join(HERE, "push_stav.json")
 CLAIMS = {"sub": "mailto:dashboard@example.com"}   # povinný údaj protokolu, skutečná adresa se nikam neposílá
 OFFLINE_AFTER_S = 600
 
@@ -147,3 +149,37 @@ def tick(soc, now=None, send=None):
     elif soc >= 100 and _st["armed"]:
         _st["armed"] = False
         send("Baterie je plná", "Stav baterie dosáhl 100 %.", "plna")
+
+
+# --- souhrn zítřejších cen ---
+def _kc(v):
+    return f"{v:.2f}".replace(".", ",")
+
+
+def souhrn_cen(vals, okno=3):
+    """Text upozornění z hodinových cen (Kč/kWh): nejlevnější okno hodin po sobě, nejdražší hodina, záporné ceny."""
+    n = len(vals)
+    okno = min(okno, n)
+    best = min(range(n - okno + 1), key=lambda i: sum(vals[i:i + okno]))
+    prum = sum(vals[best:best + okno]) / okno
+    drahe = max(range(n), key=lambda i: vals[i])
+    s = f"Nejlevnější {okno} hodiny po sobě: {best}–{best + okno} h, průměr {_kc(prum)} Kč/kWh. Nejdražší hodina: {drahe}–{drahe + 1} h ({_kc(vals[drahe])} Kč)."
+    zap = [i for i, v in enumerate(vals) if v <= 0]
+    if zap:
+        s += f" Záporná cena: {', '.join(f'{i}–{i + 1} h' for i in zap[:4])}."
+    return s
+
+
+def ceny_zitra(den, vals, send=None):
+    """Jednou za den (podle data, i po restartu) pošle souhrn cen. den = 'RRRR-MM-DD' zítřka."""
+    send = send or notify
+    try:
+        last = json.load(open(STAV_PATH, encoding="utf-8")).get("ceny_zitra")
+    except (OSError, ValueError):
+        last = None
+    if last is not None and last >= den:
+        return False
+    send("Zítřejší ceny elektřiny", souhrn_cen(vals), "ceny")
+    with open(STAV_PATH, "w", encoding="utf-8") as f:
+        json.dump({"ceny_zitra": den}, f)
+    return True

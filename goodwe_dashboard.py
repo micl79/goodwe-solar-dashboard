@@ -102,6 +102,14 @@ def price_thread():
                 prices["kurz"] = kurz
             prices["err"] = None if prices["days"] else (err or "OTE zatím nevrátilo žádné ceny")
             prices["ts"] = time.time()
+        with lock:
+            kurz_ted = prices["kurz"]
+            zitra = prices["days"].get((today + dt.timedelta(days=1)).isoformat())
+        if zitra and kurz_ted:
+            try:
+                upozorneni.ceny_zitra((today + dt.timedelta(days=1)).isoformat(), [e / 1000 * kurz_ted + MARZE for e in zitra])
+            except Exception:  # noqa: BLE001 - upozornění nesmí shodit stahování cen
+                pass
         if not days:
             wait = 300
         time.sleep(wait)
