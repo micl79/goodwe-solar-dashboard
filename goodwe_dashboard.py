@@ -450,7 +450,7 @@ HTML = r"""<!doctype html>
 <html lang="cs"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#060709">
-<script>(function(){try{var p=localStorage.getItem('theme')||'auto';var l=p==='light'||(p==='auto'&&matchMedia('(prefers-color-scheme: light)').matches);document.documentElement.dataset.theme=l?'light':'dark';}catch(e){}})();</script>
+<script>(function(){try{var p=localStorage.getItem('theme')||'dark';var l=p==='light'||(p==='auto'&&matchMedia('(prefers-color-scheme: light)').matches);document.documentElement.dataset.theme=l?'light':'dark';}catch(e){}})();</script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solár">
@@ -1076,7 +1076,7 @@ async function tick(){
   try{STATS=await (await fetch('/api/stats')).json();}catch(e){}
   drawStats();
 }/*PUBLIC-STRIP-END*/
-function themePref(){try{return localStorage.getItem('theme')||'auto';}catch(e){return 'auto';}}
+function themePref(){try{return localStorage.getItem('theme')||'dark';}catch(e){return 'dark';}}
 const mqLight=matchMedia('(prefers-color-scheme: light)');
 function applyTheme(redraw){
   const p=themePref(),light=p==='light'||(p==='auto'&&mqLight.matches);
