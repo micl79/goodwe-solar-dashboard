@@ -29,6 +29,7 @@ import goodwe
 
 import ovladani
 import upozorneni
+import verejne
 
 IP = os.environ.get("GW_IP", "192.168.68.113")
 PORT = int(os.environ.get("GW_PORT", "8080"))
@@ -49,6 +50,12 @@ CNB_URL = "https://www.cnb.cz/cs/financni-trhy/devizovy-trh/kurzy-devizoveho-trh
 MARZE = float(os.environ.get("GW_MARZE", "0"))          # přirážka dodavatele v Kč/kWh (výchozí 0 = čistá burza)
 PRICE_EVERY = 900                                       # sekund mezi stažením cen
 prices = {"days": {}, "kurz": None, "err": None, "ts": None}
+
+
+def prices_payload():
+    with lock:
+        return {"today": dt.date.today().isoformat(), "days": dict(prices["days"]), "kurz": prices["kurz"],
+                "marze": MARZE, "err": prices["err"], "ts": prices["ts"]}
 
 
 def http_get(url, timeout=15):
@@ -231,6 +238,7 @@ async def poll():
             append_csv(CSV_PATH, row)
             if cnt:
                 append_csv(CNT_PATH, cnt)
+            verejne.feed(now)
             upozorneni.tick(soc)
             await run_control(inv, soc)
         except Exception as e:  # noqa: BLE001 - chceme přežít jakýkoli výpadek
@@ -607,7 +615,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <span class="seg themeseg" id="themeseg" aria-label="Vzhled"><button data-t="dark">Tmavý</button><button data-t="light">Světlý</button><button data-t="auto">Auto</button></span>
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
-  <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
+  <nav><a href="#live">Živě</a><!--PUBLIC-STRIP-START--><a href="#ctl">Ovládání</a><!--PUBLIC-STRIP-END--><a href="#prices">Ceny</a><!--PUBLIC-STRIP-START--><a href="#analysis">Analýza</a><!--PUBLIC-STRIP-END--></nav>
  </div>
 </header>
 
@@ -639,7 +647,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="tblbox" id="tbl"><table><thead><tr><th>Čas</th><th>FVE</th><th>Dům</th><th>Síť</th><th>Baterie</th><th>SOC</th></tr></thead><tbody id="tbody"></tbody></table></div>
 </section>
 
-<section id="analysis" class="card">
+<!--PUBLIC-STRIP-START--><section id="analysis" class="card">
  <div class="bar"><h2>Analýza energie</h2>
   <span class="seg" id="per"><button data-p="7">Týden</button><button data-p="30" class="on">Měsíc</button><button data-p="365">Rok</button><button data-p="all">Celkem</button></span></div>
  <div class="note" id="note"></div>
@@ -650,12 +658,12 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="cbox"><svg class="chart" id="bars"></svg><div class="tip" id="btip"></div></div>
  <div class="tblbox" id="tbl2"></div>
  <p class="hint" style="margin:10px 0 0">Prodej a nákup jsou z elektroměru. „Vlastní spotřeba“ = výroba, která nešla do sítě. „Soběstačnost“ = podíl spotřeby, který nebyl nakoupen. Nabíjení baterie ze sítě se počítá do nákupu, hodnoty jsou proto orientační.</p>
-</section>
+</section><!--PUBLIC-STRIP-END-->
 </main>
-<aside class="ctrl"><section id="ctl" class="card">
+<!--PUBLIC-STRIP-START--><aside class="ctrl"><section id="ctl" class="card">
  <div class="bar"><h2>Ovládání</h2><span class="hint" id="ctlstate"></span></div>
  <div id="ctlbody"><p class="hint">Načítám…</p></div>
-</section></aside>
+</section></aside><!--PUBLIC-STRIP-END-->
 </div>
 </div>
 
@@ -791,6 +799,7 @@ function drawTable(){
   $('tbody').innerHTML=rows.map(r=>`<tr><td>${hhmmss(r[0])}</td><td>${fmtW(r[1])}</td><td>${fmtW(r[2])}</td><td>${fmtW(r[3])}</td><td>${fmtW(r[4])}</td><td>${r[5].toFixed(0)} %</td></tr>`).join('');
 }
 
+/*PUBLIC-STRIP-START*/
 /* ---------- analýza ---------- */
 const SER=[{k:0,n:'Výroba',c:'--s1'},{k:1,n:'Spotřeba',c:'--s2'},{k:3,n:'Prodej do sítě',c:'--s3'},{k:2,n:'Nákup ze sítě',c:'--s5'}];
 function donut(frac,color,label){
@@ -874,6 +883,7 @@ function drawTable2(P){
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
 $('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
 
+/*PUBLIC-STRIP-END*/
 /* ---------- spotové ceny ---------- */
 let PR=null, prDay=null;
 const hh=h=>String(h).padStart(2,'0');
@@ -915,6 +925,7 @@ async function tickPrices(){
   drawPrices();
 }
 
+/*PUBLIC-STRIP-START*/
 /* ---------- ovládání měniče ---------- */
 let PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
 const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
@@ -1044,12 +1055,15 @@ async function pushTest(){
 setInterval(()=>{if(UNLOCKED&&Date.now()-ctlAct>600000){PIN=null;UNLOCKED=false;ctlMsg='Po 10 minutách nečinnosti se ovládání zamklo.';drawCtl();}},30000);
 setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='range'||a.id==='pin')))ctlLoad();},60000);
 
+/*PUBLIC-STRIP-END*/
 /* ---------- smyčka ---------- */
 function render(){
   drawFlow();drawToday();
   const d=$('dot'),s=$('status');
   if(ERR){d.className='dot err';s.textContent='výpadek spojení s měničem: '+ERR;}
-  else if(NOW){d.className='dot ok';s.textContent='živě · '+hhmmss(NOW.ts);}
+  else if(NOW){const age=Date.now()/1000-NOW.ts;
+    if(age>180){d.className='dot err';s.textContent='data jsou stará '+Math.round(age/60)+' min (naposledy '+hhmm(NOW.ts)+')';}
+    else{d.className='dot ok';s.textContent='živě · '+hhmmss(NOW.ts);}}
   if(NOW)$('model').textContent=NOW.model||'';
   drawChart();drawTable();
 }
@@ -1058,10 +1072,10 @@ async function tick(){
   catch(e){ERR='dashboard neběží (zkontroluj okno s příkazovou řádkou)';}
   render();
 }
-async function tickStats(){
+/*PUBLIC-STRIP-START*/async function tickStats(){
   try{STATS=await (await fetch('/api/stats')).json();}catch(e){}
   drawStats();
-}
+}/*PUBLIC-STRIP-END*/
 function themePref(){try{return localStorage.getItem('theme')||'auto';}catch(e){return 'auto';}}
 const mqLight=matchMedia('(prefers-color-scheme: light)');
 function applyTheme(redraw){
@@ -1075,7 +1089,7 @@ document.querySelectorAll('#themeseg button').forEach(b=>b.onclick=()=>{try{loca
 (mqLight.addEventListener?mqLight.addEventListener.bind(mqLight,'change'):mqLight.addListener.bind(mqLight))(()=>{if(themePref()==='auto')applyTheme(true);});
 applyTheme(false);
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
-tick();tickStats();tickPrices();ctlLoad();setInterval(tick,5000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
+tick();/*PUBLIC-STRIP-START*/tickStats();/*PUBLIC-STRIP-END*/tickPrices();/*PUBLIC-STRIP-START*/ctlLoad();/*PUBLIC-STRIP-END*/setInterval(tick,5000);/*PUBLIC-STRIP-START*/setInterval(tickStats,60000);/*PUBLIC-STRIP-END*/setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}
 </script></body></html>
 """
@@ -1170,9 +1184,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps(out).encode()
             ctype = "application/json"
         elif self.path.startswith("/api/ceny"):
-            with lock:
-                body = json.dumps({"today": dt.date.today().isoformat(), "days": prices["days"], "kurz": prices["kurz"],
-                                   "marze": MARZE, "err": prices["err"], "ts": prices["ts"]}).encode()
+            body = json.dumps(prices_payload()).encode()
             ctype = "application/json"
         elif self.path.startswith("/api"):
             with lock:
@@ -1287,6 +1299,7 @@ if __name__ == "__main__":
     except OSError:
         lan_ip = None
     print("Upozornění na telefon: " + ("zapnuta (přihlášených telefonů: %d)" % upozorneni.count() if push_ok else "vypnuta (chybí balíček pywebpush: pip install pywebpush)"))
+    print("Veřejná stránka: " + verejne.start(prices_payload))
     print("Ovládání měniče: " + ("ZAPNUTO (přístupový kód nastaven)" if ovladani.enabled() else "vypnuto (chybí proměnná GW_PIN)"))
     print(f"Dashboard běží: http://localhost:{PORT}   (ukončení: Ctrl+C)")
     if lan_ip:

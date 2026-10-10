@@ -37,3 +37,8 @@ Komunikace s uživatelem je česky.
 - Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Ověřeno na skutečném iPhonu 10. 10. 2026 (zkouška přišla).
 - Provoz: dashboard běží z projektové složky (data CSV jsou tady). Staré soubory z plochy jsou v `Desktop\solar_stare_soubory`. Druhá instance se nespustí (`allow_reuse_address = False`).
 
+## Veřejná výloha (`vyloha/`, `verejne.py`, `sestav_vyloha.py`)
+- Veřejná stránka je sestavená z HTML dashboardu: `sestav_vyloha.py` vyřízne bloky mezi značkami `PUBLIC-STRIP-START/END` (ovládání, analýza, upozornění) a přepíše adresy na `/api/snapshot`. Při přidání nového ovládacího kódu do dashboardu ho OBALIT těmito značkami, jinak by se dostal na veřejnou stránku (sestavení selže, když tam zůstane `/api/ovladani`, `/api/push`, `unlock` apod.).
+- Domácí PC data posílá (`verejne.py`, vypnuto bez proměnných `GW_VEREJNE_URL`/`GW_VEREJNE_TOKEN`), Vercel je ukládá do Redisu (`vyloha/api/snapshot.py`, Python). Zpoždění: `GW_VEREJNE_ZPOZDENI`. Návod k nasazení: `vyloha/README.md`.
+- Nasazení na Vercel a veřejné ovládání zatím NEJSOU hotové (čeká na doménu a účty). Veřejné ovládání se nedělá bez přihlášení přes e-mail (Cloudflare Access), samotný šestimístný kód je na internet slabý.
+
