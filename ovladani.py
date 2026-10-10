@@ -49,6 +49,8 @@ GROUPS = {
     "export": ["grid_export_limit"],
 }
 
+oznam = None   # volitelná funkce (titulek, text, značka) pro upozornění na telefon; nastavuje dashboard
+
 _pin_lock = threading.Lock()
 _fails = {"n": 0, "until": 0.0}
 _b = {"groups": {}, "charge": None}
@@ -260,3 +262,5 @@ async def tick(inv, soc):
         return
     await _restore(inv, "charge")
     _log("automaticky", "nabíjení skončilo, režim vrácen zpět", reason)
+    if oznam:
+        oznam("Nabíjení skončilo", f"{reason[0].upper()}{reason[1:]}. Režim měniče je vrácený zpět.", "nabijeni")

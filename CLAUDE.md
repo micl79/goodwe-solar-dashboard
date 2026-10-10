@@ -31,3 +31,9 @@ Komunikace s uživatelem je česky.
 - Každá změna se zapisuje do `ovladani.log` (bez kódu).
 - Ceny: burza OTE (hodinová řada 60min, `report_date=RRRR-MM-DD`), kurz ČNB; shodují se s cenou v aplikaci dodavatele (ověřeno 9. 10. 9:00 = 3,93 Kč/kWh).
 
+## Upozornění (`upozorneni.py`)
+- Web Push přes `pywebpush` (nepovinný balíček). Klíč VAPID se při prvním startu vytvoří v `push_klic.json`, přihlášené telefony jsou v `push_odberatele.json` (obojí v .gitignore, nikdy nenahrávat).
+- Přihlášení k upozornění vyžaduje stejný přístupový kód jako ovládání. Události: baterie plná (po poklesu pod 90 %), nabíjení skončilo, měnič 10 min nedostupný a znovu online.
+- Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Zatím neověřeno na skutečném telefonu.
+- Provoz: dashboard běží z projektové složky (data CSV jsou tady). Staré soubory z plochy jsou v `Desktop\solar_stare_soubory`. Druhá instance se nespustí (`allow_reuse_address = False`).
+

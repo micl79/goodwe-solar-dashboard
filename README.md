@@ -10,6 +10,9 @@ bez cloudu. Jeden soubor, bez dalších závislostí kromě `goodwe`.
 - **Historie ze SEMS** (export `.xlsx` -> `sems_import.py` -> `goodwe_sems.csv`).
 - **Odhad za výpadek dat ve SEMS** (rozdíl celoživotních počítadel měniče + sezónní průběh z minulých let), v grafu šrafovaně.
 - **Telefon / PWA**: ikona na domovské obrazovce, přístup z venku přes Tailscale.
+- **Spotové ceny** z burzy OTE (hodinové, kurz ČNB) v levém sloupci. Shodují se s cenou v aplikaci dodavatele.
+- **Ovládání měniče** v pravém sloupci: nabít baterii, přepnout režim, nejnižší stav baterie, limit prodeje. Chráněno přístupovým kódem, s možností "Vrátit na původní".
+- **Upozornění na iPhone** (baterie plná, nabíjení skončilo, měnič nedostupný).
 - Tmavé "luxusní" téma.
 
 ## Spuštění (Windows)
@@ -21,6 +24,15 @@ Otevři `http://localhost:8080`. IP měniče se nastavuje v proměnné `GW_IP` (
 Dvojklik na `solar.bat` spustí dashboard i prohlížeč.
 
 Proměnné prostředí: `GW_IP`, `GW_PORT` (8080), `GW_INTERVAL` (5 s), `GW_COUNTER_EVERY` (300 s).
+
+## Ovládání a upozornění
+- Přístupový kód: v PowerShellu `setx GW_PIN "váš-kód"` (aspoň 6 znaků), pak se odhlaste a přihlaste. Bez kódu je ovládání vypnuté. Kód se nikam do souborů neukládá.
+- Změny se zapisují do `ovladani.log`, původní hodnoty do `ovladani_zaloha.json`. Ostrovní režim v kódu není.
+- Upozornění: `pip install pywebpush`, pak v dashboardu u Ovládání "Zapnout" (na iPhonu z ikony na ploše, přes https adresu).
+- Ceny: marže dodavatele se nastavuje proměnnou `GW_MARZE` (Kč/kWh), výchozí 0 odpovídá aplikaci Delta Green.
+
+## Automatický start
+`solar_autostart.bat` se spouští při přihlášení do Windows ze složky Po spuštění (`shell:startup`, zástupce "Solarni dashboard"). Druhá kopie dashboardu se nespustí (port je obsazený).
 
 ## Historie ze SEMS
 1. Na semsportal.com stáhni exporty *Station Statistical Report* (období Day / Month / Year).
@@ -40,4 +52,4 @@ powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $s=(
 (předpokládá `solar.bat` a `solar.ico` na ploše)
 
 ## Osobní data
-`goodwe_historie.csv`, `goodwe_pocitadla.csv` a `goodwe_sems.csv` jsou v `.gitignore`. Repozitář nech **privátní**.
+`goodwe_historie.csv`, `goodwe_pocitadla.csv`, `goodwe_sems.csv`, `ovladani*`, `push_*.json` jsou v `.gitignore`. Repozitář nech **privátní**.

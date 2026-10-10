@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import goodwe
 
 import ovladani
+import upozorneni
 
 IP = os.environ.get("GW_IP", "192.168.68.113")
 PORT = int(os.environ.get("GW_PORT", "8080"))
@@ -222,11 +223,13 @@ async def poll():
             append_csv(CSV_PATH, row)
             if cnt:
                 append_csv(CNT_PATH, cnt)
+            upozorneni.tick(soc)
             await run_control(inv, soc)
         except Exception as e:  # noqa: BLE001 - chceme přežít jakýkoli výpadek
             with lock:
                 state["err"] = str(e) or type(e).__name__
             inv = None
+            upozorneni.tick(None)
             fail_pending("Měnič teď není dostupný. Nic se nezměnilo.")
         await asyncio.sleep(INTERVAL)
 
@@ -943,6 +946,8 @@ function drawCtl(){
     <label>Limit <b id="ex_v">${fmtK(ex,0)} W</b></label><input type="range" id="ex" min="0" max="10000" step="100" value="${ex}">
     <button class="btn go" id="ego">Nastavit</button>${back('export',x=>fmtK(x,0)+' W')}</div>`;
   if(Object.keys(P).length>1)h+=`<div class="cgrp"><button class="btn" id="call">Vrátit vše na původní</button></div>`;
+  h+=`<div class="cgrp"><h3>Upozornění na tento telefon</h3><div class="hint" id="pushinfo">Zjišťuji…</div>
+    <button class="btn go" id="pon" style="display:none">Zapnout</button><button class="btn" id="ptest" style="display:none">Poslat zkoušku</button><button class="btn" id="poff" style="display:none">Vypnout</button></div>`;
   h+=`<p class="cmsg" id="ctlmsg">${ctlMsg}</p>`;
   el.innerHTML=h;
   el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask('Přepnout režim měniče na „'+MODE_LBL[m]+'“?','mode',{mode:m});});
@@ -954,6 +959,58 @@ function drawCtl(){
   $('mgo').onclick=()=>ask('Nejnižší stav baterie při vybíjení nastavit na '+$('ms').value+' %?','min_soc',{value:+$('ms').value});
   $('ego').onclick=()=>ask('Limit prodeje do sítě nastavit na '+fmtK($('ex').value,0)+' W?','export',{value:+$('ex').value});
   if($('call'))$('call').onclick=()=>ask('Vrátit všechna změněná nastavení na původní hodnoty?','revert',{group:'all'});
+  $('pon').onclick=pushOn;$('poff').onclick=pushOff;$('ptest').onclick=pushTest;
+  pushState();
+}
+/* ---------- upozornění na telefon ---------- */
+const u8=b=>Uint8Array.from(atob((b+'='.repeat((4-b.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+const say=t=>{ctlMsg=t;if($('ctlmsg'))$('ctlmsg').textContent=t;};
+async function pushReg(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!window.isSecureContext)return null;
+  try{return await Promise.race([navigator.serviceWorker.ready,new Promise(r=>setTimeout(()=>r(null),4000))]);}catch(e){return null;}
+}
+async function pushState(){
+  if(!$('pushinfo'))return;
+  const reg=await pushReg();
+  if(!$('pushinfo'))return;
+  if(!reg){$('pushinfo').textContent='Tady upozornění nejdou. Na iPhonu (iOS 16.4 a novější) otevřete dashboard z ikony na ploše přes adresu s https://, ne přes WiFi adresu s http://.';return;}
+  const s=await reg.pushManager.getSubscription();
+  $('pushinfo').textContent=s?'Zapnuto. Přijde: baterie plná, nabíjení skončilo, měnič nedostupný 10 minut a zase online.':'Vypnuto. Po zapnutí přijde: baterie plná, nabíjení skončilo, měnič nedostupný 10 minut a zase online.';
+  $('pon').style.display=s?'none':'';$('poff').style.display=$('ptest').style.display=s?'':'none';
+}
+async function pushPost(path,body){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({pin:PIN},body||{}))});
+  const j=await r.json().catch(()=>({ok:false,error:'neplatná odpověď'}));
+  if(r.status===403){PIN=null;UNLOCKED=false;ctlMsg=j.error||'';drawCtl();}
+  return j;
+}
+async function pushOn(){
+  ctlAct=Date.now();
+  try{
+    const reg=await pushReg();if(!reg){say('Tady upozornění nejdou.');return;}
+    const k=await (await fetch('/api/push/klic')).json();
+    if(!k.enabled){say('Na počítači chybí balíček pywebpush (pip install pywebpush).');return;}
+    if(await Notification.requestPermission()!=='granted'){say('Upozornění nejsou povolená v nastavení telefonu.');return;}
+    let s=await reg.pushManager.getSubscription();
+    if(!s)s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(k.key)});
+    const j=await pushPost('/api/push/prihlasit',{subscription:s.toJSON()});
+    if(j.ok)say('Upozornění zapnuta.');else if(PIN!==null)say('Nepovedlo se: '+j.error);
+  }catch(e){say('Nepovedlo se: '+e.message);}
+  pushState();
+}
+async function pushOff(){
+  ctlAct=Date.now();
+  try{
+    const reg=await pushReg(),s=reg&&await reg.pushManager.getSubscription();
+    if(s){await pushPost('/api/push/odhlasit',{endpoint:s.endpoint});await s.unsubscribe();}
+    say('Upozornění vypnuta.');
+  }catch(e){say('Nepovedlo se: '+e.message);}
+  pushState();
+}
+async function pushTest(){
+  ctlAct=Date.now();say('Posílám zkoušku…');
+  const j=await pushPost('/api/push/test');
+  if(PIN!==null)say(j.ok?'Zkouška odeslána. Za chvilku se ukáže na telefonu.':'Nepovedlo se: '+j.error);
 }
 setInterval(()=>{if(UNLOCKED&&Date.now()-ctlAct>600000){PIN=null;UNLOCKED=false;ctlMsg='Po 10 minutách nečinnosti se ovládání zamklo.';drawCtl();}},30000);
 setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='range'||a.id==='pin')))ctlLoad();},60000);
@@ -1039,7 +1096,11 @@ MANIFEST = json.dumps({
     "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
               {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}],
 })
-SW_JS = "self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',()=>{});"
+SW_JS = ("self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',()=>{});"
+         "self.addEventListener('push',e=>{let d={};try{d=e.data.json();}catch(_){}"
+         "e.waitUntil(self.registration.showNotification(d.title||'Solár',{body:d.body||'',icon:'/icon-192.png',tag:d.tag||undefined}));});"
+         "self.addEventListener('notificationclick',e=>{e.notification.close();"
+         "e.waitUntil(clients.matchAll({type:'window'}).then(l=>l.length?l[0].focus():clients.openWindow('/')));});")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1053,6 +1114,10 @@ class Handler(BaseHTTPRequestHandler):
             body, ctype = make_icon(int(path[6:9])), "image/png"
         elif self.path.startswith("/api/stats"):
             body = json.dumps(compute_stats()).encode()
+            ctype = "application/json"
+        elif path == "/api/push/klic":
+            body = json.dumps({"enabled": bool(upozorneni.public_key()), "key": upozorneni.public_key(),
+                               "count": upozorneni.count()}).encode()
             ctype = "application/json"
         elif path == "/api/ovladani":
             out = {"enabled": ovladani.enabled(), "status": None, "err": None}
@@ -1092,25 +1157,32 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        """Jediný zápis do měniče: /api/ovladani. Vyžaduje přístupový kód."""
-        if self.path.split("?")[0] != "/api/ovladani":
+        """Zápisy: /api/ovladani (měnič) a /api/push/* (upozornění). Všechno vyžaduje přístupový kód."""
+        path = self.path.split("?")[0]
+        if path not in ("/api/ovladani", "/api/push/prihlasit", "/api/push/odhlasit", "/api/push/test"):
             return self._json(404, {"ok": False, "error": "Neznámá adresa"})
         if "application/json" not in self.headers.get("Content-Type", ""):
             return self._json(415, {"ok": False, "error": "Očekává se JSON"})
         try:
             n = int(self.headers.get("Content-Length", "0"))
-            if not 0 < n <= 4096:
+            if not 0 < n <= 8192:
                 raise ValueError
             req = json.loads(self.rfile.read(n).decode("utf-8"))
-            action = req["action"]
+            if not isinstance(req, dict):
+                raise ValueError
+            action = req.get("action", "")
             params = req.get("params") or {}
             if not isinstance(action, str) or not isinstance(params, dict):
                 raise ValueError
-        except (ValueError, KeyError, UnicodeDecodeError):
+            if path == "/api/ovladani" and not action:
+                raise ValueError
+        except (ValueError, UnicodeDecodeError):
             return self._json(400, {"ok": False, "error": "Neplatný požadavek"})
         ok, msg = ovladani.check_pin(req.get("pin"))
         if not ok:
             return self._json(403, {"ok": False, "error": msg})
+        if path != "/api/ovladani":
+            return self._push_post(path, req)
         who = self.client_address[0]
         try:
             res = run_cmd(lambda inv, soc: ovladani.execute(inv, action, params, who, soc))
@@ -1120,6 +1192,22 @@ class Handler(BaseHTTPRequestHandler):
             ovladani._log(who, "CHYBA " + action, str(e) or type(e).__name__)
             return self._json(500, {"ok": False, "error": str(e) or type(e).__name__})
         self._json(200, {"ok": True, "status": res})
+
+    def _push_post(self, path, req):
+        if not upozorneni.public_key():
+            return self._json(503, {"ok": False, "error": "Upozornění jsou vypnutá (chybí balíček pywebpush)."})
+        try:
+            if path == "/api/push/prihlasit":
+                upozorneni.subscribe(req.get("subscription"))
+            elif path == "/api/push/odhlasit":
+                upozorneni.unsubscribe(str(req.get("endpoint", "")))
+            else:
+                sent = upozorneni.notify("Zkouška upozornění", "Pokud to vidíš, upozornění fungují.", "test", wait=True)
+                if not sent:
+                    return self._json(502, {"ok": False, "error": "Zkouška se nepodařila odeslat. Zapněte upozornění znovu."})
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        self._json(200, {"ok": True, "count": upozorneni.count()})
 
     def log_message(self, *a):
         pass
@@ -1137,6 +1225,8 @@ if __name__ == "__main__":
         raise SystemExit(1)
     load_history()
     ovladani.load_backup()
+    push_ok = upozorneni.init()
+    ovladani.oznam = upozorneni.notify
     sems_data = load_sems()
     n_sems = sum(len(v) for v in sems_data.values())
     print(f"Složka s dashboardem: {HERE}")
@@ -1155,6 +1245,7 @@ if __name__ == "__main__":
         sk.close()
     except OSError:
         lan_ip = None
+    print("Upozornění na telefon: " + ("zapnuta (přihlášených telefonů: %d)" % upozorneni.count() if push_ok else "vypnuta (chybí balíček pywebpush: pip install pywebpush)"))
     print("Ovládání měniče: " + ("ZAPNUTO (přístupový kód nastaven)" if ovladani.enabled() else "vypnuto (chybí proměnná GW_PIN)"))
     print(f"Dashboard běží: http://localhost:{PORT}   (ukončení: Ctrl+C)")
     if lan_ip:
