@@ -12,6 +12,7 @@ bez cloudu. Jeden soubor, bez dalších závislostí kromě `goodwe`.
 - **Telefon / PWA**: ikona na domovské obrazovce, přístup z venku přes Tailscale.
 - **Spotové ceny** z burzy OTE (hodinové, kurz ČNB) v levém sloupci. Shodují se s cenou v aplikaci dodavatele.
 - **Ovládání měniče** v pravém sloupci: nabít baterii, přepnout režim, nejnižší stav baterie, limit prodeje. Chráněno přístupovým kódem, s možností "Vrátit na původní".
+- **Nabíjení v nejlevnějších hodinách:** v zadaném okně (např. 22:00 až 6:00) se vybere tolik nejlevnějších hodin, kolik je potřeba k cílovému stavu baterie, a v nich se samo zapne nabíjení. Má cenový strop a hlídá, aby rozdíl proti pozdějším cenám pokryl ztráty baterie. Ve výchozím stavu je vypnuté.
 - **Upozornění na iPhone** (baterie plná, nabíjení skončilo, měnič nedostupný).
 - Čeština a angličtina (vlajky v záhlaví), tmavý, světlý a automatický vzhled.
 

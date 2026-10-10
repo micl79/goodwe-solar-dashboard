@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import goodwe
 
+import nabijeni
 import ovladani
 import upozorneni
 import verejne
@@ -56,6 +57,15 @@ def prices_payload():
     with lock:
         return {"today": dt.date.today().isoformat(), "days": dict(prices["days"]), "kurz": prices["kurz"],
                 "marze": MARZE, "err": prices["err"], "ts": prices["ts"]}
+
+
+def prices_kc():
+    """Hodinové ceny v Kč/kWh pro plánovač nabíjení: {'datum': [24 cen]} (dny s 23 nebo 25 hodinami se přeskočí)."""
+    with lock:
+        days, kurz = dict(prices["days"]), prices["kurz"]
+    if not kurz:
+        return {}
+    return {d: [e / 1000 * kurz + MARZE for e in v] for d, v in days.items() if len(v) == 24}
 
 
 def http_get(url, timeout=15):
@@ -150,6 +160,10 @@ async def run_control(inv, soc):
         await ovladani.tick(inv, soc)
     except Exception as e:  # noqa: BLE001
         ovladani._log("automaticky", "CHYBA při návratu zpět", str(e))
+    try:
+        await nabijeni.tick(inv, soc, prices_kc(), notify=upozorneni.notify)
+    except Exception as e:  # noqa: BLE001
+        ovladani._log("plán", "CHYBA", str(e) or type(e).__name__)
     while True:
         try:
             fn, fut, deadline = cmd_q.get_nowait()
@@ -781,7 +795,21 @@ const EN={
 "Ukázka: nic se neodeslalo a v elektrárně se nic nezměnilo.":"Demo: nothing was sent and nothing changed in the power plant.",
 "V ukázce se upozornění nezapínají.":"Notifications are not turned on in the demo.",
 /* stavový řádek */
-"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}","simulovaná ukázka · virtuální data":"simulated demo · virtual data",
+"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}","Nabíjení v nejlevnějších hodinách":"Charging in the cheapest hours",
+"Plán je vypnutý. Zapnutím se každý den vybere nejlevnější čas k nabíjení z ceny elektřiny.":"The plan is off. When turned on, the cheapest time for charging is picked every day based on the electricity price.",
+"Probíhá nabíjení podle plánu.":"Charging according to the plan is in progress.","Plán se připravuje…":"Preparing the plan…",
+"Cílový stav už je splněn (baterie {0}), nabíjení není potřeba.":"The target level is already met (battery {0}), charging is not needed.",
+"Čekám na ceny pro dané hodiny (zítřejší ceny OTE zveřejňuje odpoledne).":"Waiting for prices for these hours (OTE publishes tomorrow’s prices in the afternoon).",
+"Žádná hodina v okně není pod cenovým stropem (nejlevnější je {0} Kč/kWh).":"No hour in the window is below the price cap (the cheapest is {0} CZK/kWh).",
+"Nevyplatí se: cena v okně ({0} Kč/kWh) je jen o málo nižší než cena po jeho skončení ({1} Kč/kWh), ztráty baterie by rozdíl snědly.":"Not worth it: the price in the window ({0} CZK/kWh) is only slightly lower than the price after it ({1} CZK/kWh); the battery losses would eat the difference.",
+"Plán na toto okno je hotový.":"The plan for this window is done.","Naplánováno: {0}.":"Planned: {0}.",
+"Levných hodin je málo, plán nepokryje celý cíl.":"There are few cheap hours, so the plan will not cover the whole target.","dnes":"today","zítra":"tomorrow",
+"Okno od":"Window from","Okno do":"Window to","Cenový strop":"Price cap","Minimální rozdíl":"Minimum difference",
+"Zapnout plán":"Turn on the plan","Uložit změny":"Save changes","Vypnout plán":"Turn off the plan","Plán nabíjení uložen.":"Charging plan saved.","Plán nabíjení":"Charging plan",
+"Nabíjet baterii automaticky v nejlevnějších hodinách: okno {0}–{1}, cíl {2} %, cenový strop {3} Kč/kWh, minimální rozdíl {4} Kč/kWh? Plán se každý den přepočítá podle cen a nabíjení po skončení hodiny samo skončí.":"Charge the battery automatically in the cheapest hours: window {0}–{1}, target {2}%, price cap {3} CZK/kWh, minimum difference {4} CZK/kWh? The plan is recalculated every day based on prices, and charging ends by itself when the hour ends.",
+"Vypnout automatické nabíjení v nejlevnějších hodinách?":"Turn off automatic charging in the cheapest hours?",
+"Začátek okna":"Window start","Konec okna":"Window end","Kapacita baterie":"Battery capacity","Okno musí mít aspoň 2 hodiny":"The window must be at least 2 hours long","Neplatné nastavení":"Invalid settings",
+"simulovaná ukázka · virtuální data":"simulated demo · virtual data",
 /* zprávy ze serveru */
 "Chybný přístupový kód.":"Wrong access code.","Ovládání je vypnuté (není nastaven přístupový kód GW_PIN).":"Controls are disabled (the access code GW_PIN is not set).",
 "Příliš mnoho chybných pokusů. Zkuste to za {0} s.":"Too many wrong attempts. Try again in {0} s.","Neznámý režim":"Unknown mode","Neznámá akce":"Unknown action","Neznámá skupina":"Unknown group",
@@ -1102,9 +1130,29 @@ async function tickPrices(){
 }
 
 /* ---------- ovládání měniče ---------- */
-let PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
+let PLAN=null, PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
 const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
 const MODE_LBL={GENERAL:'Základní',ECO:'Eco',SELF_USE:'Vlastní spotřeba',PEAK_SHAVING:'Ořezání špiček',BACKUP:'Záloha',OFF_GRID:'Ostrovní'};
+
+function planDay(iso){const t=new Date().toLocaleDateString('sv-SE');const m=new Date(Date.now()+864e5).toLocaleDateString('sv-SE');return iso.slice(0,10)===t?L('dnes'):iso.slice(0,10)===m?L('zítra'):iso.slice(8,10)+'.'+iso.slice(5,7)+'.';}
+function planText(){
+  const P=PLAN,s=P&&P.settings,p=P&&P.plan;if(!s)return '';
+  if(!s.enabled)return L('Plán je vypnutý. Zapnutím se každý den vybere nejlevnější čas k nabíjení z ceny elektřiny.');
+  if(P.started)return L('Probíhá nabíjení podle plánu.');
+  if(!p)return L('Plán se připravuje…');
+  if(p.stav==='netreba')return L('Cílový stav už je splněn (baterie {0}), nabíjení není potřeba.',PC(p.soc));
+  if(p.stav==='ceka')return L('Čekám na ceny pro dané hodiny (zítřejší ceny OTE zveřejňuje odpoledne).');
+  if(p.stav==='zadne')return L('Žádná hodina v okně není pod cenovým stropem (nejlevnější je {0} Kč/kWh).',fmtK(p.nejlevnejsi,2));
+  if(p.stav==='nevyplati')return L('Nevyplatí se: cena v okně ({0} Kč/kWh) je jen o málo nižší než cena po jeho skončení ({1} Kč/kWh), ztráty baterie by rozdíl snědly.',fmtK(p.cena,2),fmtK(p.ref,2));
+  if(p.stav==='hotovo')return L('Plán na toto okno je hotový.');
+  if(p.stav==='naplanovano')return L('Naplánováno: {0}.',p.bloky.map(b=>planDay(b.start)+' '+b.start.slice(11,16)+'–'+b.end.slice(11,16)+' ('+fmtK(b.cena,2)+' '+L('Kč/kWh')+')').join(', '))+(p.castecne?' '+L('Levných hodin je málo, plán nepokryje celý cíl.'):'');
+  return '';
+}
+function planParams(on){
+  const g=(id,d)=>$(id)?+$(id).value:d,s=(PLAN&&PLAN.settings)||{};
+  return {enabled:on,target:g('pt',s.target),start:g('ps',s.start),end:g('pe',s.end),cap_kc:g('pc',s.cap_kc),spread:g('pd',s.spread)};
+}
+const hh2=h=>String(h).padStart(2,'0')+':00';
 function priceTxt(){
   if(!PR||!PR.days||!PR.days[PR.today]||PR.kurz==null)return '';
   const e=PR.days[PR.today][new Date().getHours()];
@@ -1112,7 +1160,7 @@ function priceTxt(){
 }
 /*PUBLIC-STRIP-START*/async function ctlLoad(){
   ctlMsg='';
-  try{const j=await (await fetch('/api/ovladani')).json();CTLEN=j.enabled;CTL=j.status;CTLERR=j.err;}
+  try{const j=await (await fetch('/api/ovladani')).json();CTLEN=j.enabled;CTL=j.status;PLAN=j.plan;CTLERR=j.err;}
   catch(e){CTLERR='dashboard neodpovídá';}
   drawCtl();
 }
@@ -1123,12 +1171,12 @@ async function ctlPost(action,params){
     const r=await fetch('/api/ovladani',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:PIN,action,params:params||{}})});
     const j=await r.json();
     if(r.status===403){PIN=null;UNLOCKED=false;}
-    if(j.ok){CTL=j.status;CTLERR=null;UNLOCKED=true;ctlMsg=action==='overit'?'':'Hotovo, změna je v měniči.';delete cv.ms;delete cv.ex;}
+    if(j.ok){if(j.status)CTL=j.status;if(j.plan)PLAN=j.plan;CTLERR=null;UNLOCKED=true;ctlMsg=action==='overit'?'':action==='plan'?'Plán nabíjení uložen.':'Hotovo, změna je v měniči.';delete cv.ms;delete cv.ex;}
     else ctlMsg=L('Nepovedlo se: {0}',T(j.error||String(r.status)));
   }catch(e){ctlMsg=L('Nepovedlo se: {0}',e.message);}
   ctlBusy=false;drawCtl();
 }
-/*PUBLIC-STRIP-END*/const ASKT={mode:'Přepnout režim',charge:'Nabít baterii',min_soc:'Nejnižší stav baterie',export:'Limit prodeje do sítě',revert:'Vrátit na původní'};
+/*PUBLIC-STRIP-END*/const ASKT={plan:'Plán nabíjení',mode:'Přepnout režim',charge:'Nabít baterii',min_soc:'Nejnižší stav baterie',export:'Limit prodeje do sítě',revert:'Vrátit na původní'};
 function dlgOpen(title,text,note,yes){
   return new Promise(res=>{
     const d=$('dlg'),prev=document.activeElement,no=$('dlgno'),ok=$('dlgyes');
@@ -1171,6 +1219,15 @@ function drawCtl(){
     <label>Cílový stav <b id="cs_v">${PC(cs)}</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
     <label>Výkon nabíjení <b id="cp_v">${PC(cp)}</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
     <button class="btn go" id="cgo">Nabíjet</button>`)+`</div>`;
+  if(PLAN&&PLAN.settings){const ps=PLAN.settings;
+    const pt=cv.pt??ps.target, pS=cv.ps??ps.start, pE=cv.pe??ps.end, pc=cv.pc??ps.cap_kc, pd=cv.pd??ps.spread;
+    h+=`<div class="cgrp"><h3>Nabíjení v nejlevnějších hodinách</h3><div class="hint">${planText()}</div>
+    <label>Cílový stav <b id="pt_v">${PC(pt)}</b></label><input type="range" id="pt" min="20" max="100" step="5" value="${pt}">
+    <label>Okno od <b id="ps_v">${hh2(pS)}</b></label><input type="range" id="ps" min="0" max="23" step="1" value="${pS}">
+    <label>Okno do <b id="pe_v">${hh2(pE)}</b></label><input type="range" id="pe" min="0" max="23" step="1" value="${pE}">
+    <label>Cenový strop <b id="pc_v">${fmtK(pc,2)} ${L('Kč/kWh')}</b></label><input type="range" id="pc" min="0.5" max="5" step="0.1" value="${pc}">
+    <label>Minimální rozdíl <b id="pd_v">${fmtK(pd,2)} ${L('Kč/kWh')}</b></label><input type="range" id="pd" min="0" max="2" step="0.1" value="${pd}">
+    <button class="btn go" id="pgo">${ps.enabled?'Uložit změny':'Zapnout plán'}</button>${ps.enabled?'<button class="btn" id="poffp">Vypnout plán</button>':''}</div>`;}
   h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">${L('Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: {0} %.',S.min_soc)}</div>
     <label>Nejnižší stav <b id="ms_v">${PC(ms)}</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
     <button class="btn go" id="mgo">Nastavit</button>${back('min_soc',x=>PC(x))}</div>`;
@@ -1188,6 +1245,10 @@ function drawCtl(){
     r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=id==='ex'?fmtK(r.value,0)+' W':PC(r.value);};});
   if($('cgo'))$('cgo').onclick=()=>ask(L('Nabíjet baterii na {0} % výkonem {1} %? Nabíjí se i ze sítě.',$('cs').value,$('cp').value)+priceTxt()+L(' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).'),'charge',{target:+$('cs').value,power:+$('cp').value});
   if($('cstop'))$('cstop').onclick=()=>ask('Zrušit nabíjení a vrátit režim, jaký byl před ním?','revert',{group:'charge'});
+  [['pt',v=>PC(v)],['ps',v=>hh2(v)],['pe',v=>hh2(v)],['pc',v=>fmtK(v,2)+' '+L('Kč/kWh')],['pd',v=>fmtK(v,2)+' '+L('Kč/kWh')]].forEach(([id,f])=>{const r=$(id);if(!r)return;
+    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=f(+r.value);};});
+  if($('pgo'))$('pgo').onclick=()=>{const q=planParams(true);ask(L('Nabíjet baterii automaticky v nejlevnějších hodinách: okno {0}–{1}, cíl {2} %, cenový strop {3} Kč/kWh, minimální rozdíl {4} Kč/kWh? Plán se každý den přepočítá podle cen a nabíjení po skončení hodiny samo skončí.',hh2(q.start),hh2(q.end),q.target,fmtK(q.cap_kc,2),fmtK(q.spread,2)),'plan',q);};
+  if($('poffp'))$('poffp').onclick=()=>ask(L('Vypnout automatické nabíjení v nejlevnějších hodinách?'),'plan',planParams(false));
   $('mgo').onclick=()=>ask(L('Nejnižší stav baterie při vybíjení nastavit na {0} %?',$('ms').value),'min_soc',{value:+$('ms').value});
   $('ego').onclick=()=>ask(L('Limit prodeje do sítě nastavit na {0} W?',fmtK($('ex').value,0)),'export',{value:+$('ex').value});
   if($('call'))$('call').onclick=()=>ask('Vrátit všechna změněná nastavení na původní hodnoty?','revert',{group:'all'});
@@ -1376,7 +1437,7 @@ class Handler(BaseHTTPRequestHandler):
                                "count": upozorneni.count()}).encode()
             ctype = "application/json"
         elif path == "/api/ovladani":
-            out = {"enabled": ovladani.enabled(), "status": None, "err": None}
+            out = {"enabled": ovladani.enabled(), "status": None, "err": None, "plan": nabijeni.view() if ovladani.enabled() else None}
             if out["enabled"]:
                 try:
                     out["status"] = run_cmd(lambda inv, soc: ovladani.status(inv))
@@ -1438,6 +1499,13 @@ class Handler(BaseHTTPRequestHandler):
         if path != "/api/ovladani":
             return self._push_post(path, req)
         who = self.client_address[0]
+        if path == "/api/ovladani" and action == "plan":       # nastavení plánu nabíjení: měnič se nezapisuje
+            try:
+                view = nabijeni.set_settings(params)
+            except ValueError as e:
+                return self._json(400, {"ok": False, "error": str(e)})
+            ovladani._log(who, "plán nabíjení", json.dumps(view["settings"], ensure_ascii=False))
+            return self._json(200, {"ok": True, "status": None, "plan": view})
         try:
             res = run_cmd(lambda inv, soc: ovladani.execute(inv, action, params, who, soc))
         except ValueError as e:
@@ -1445,7 +1513,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             ovladani._log(who, "CHYBA " + action, str(e) or type(e).__name__)
             return self._json(500, {"ok": False, "error": str(e) or type(e).__name__})
-        self._json(200, {"ok": True, "status": res})
+        self._json(200, {"ok": True, "status": res, "plan": nabijeni.view()})
 
     def _push_post(self, path, req):
         if not upozorneni.public_key():
@@ -1480,6 +1548,7 @@ if __name__ == "__main__":
         raise SystemExit(1)
     load_history()
     ovladani.load_backup()
+    nabijeni.load()
     push_ok = upozorneni.init()
     ovladani.oznam = upozorneni.notify
     sems_data = load_sems()

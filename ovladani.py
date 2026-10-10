@@ -192,7 +192,7 @@ def _num(v, lo_hi, name):
     return v
 
 
-async def execute(inv, action, params, who, soc=None):
+async def execute(inv, action, params, who, soc=None, until=None):
     params = params or {}
     if action == "overit":
         return await status(inv)
@@ -218,6 +218,8 @@ async def execute(inv, action, params, who, soc=None):
         await _take(inv, "charge")
         await inv.set_operation_mode(OperationMode.ECO_CHARGE, power, target)
         _b["charge"] = {"target": target, "power": power, "t0": time.time()}
+        if until:
+            _b["charge"]["until"] = until          # konec naplánované hodiny (nabíjení podle plánu)
         _save()
         _log(who, "nabíjení", f"cíl {target} %, výkon {power} %")
 
@@ -257,6 +259,9 @@ async def tick(inv, soc):
     if soc >= c["target"]:
         reason = f"cíl {c['target']} % dosažen"
         reason_en = f"The {c['target']}% target was reached"
+    elif c.get("until") and time.time() > c["until"]:
+        reason = "skončila naplánovaná hodina"
+        reason_en = "The planned hour ended"
     elif time.time() - c["t0"] > MAX_CHARGE_S:
         reason = "uplynul časový limit 8 h"
         reason_en = "The 8 h time limit passed"
