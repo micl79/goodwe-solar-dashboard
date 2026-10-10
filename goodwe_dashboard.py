@@ -13,16 +13,21 @@ import asyncio
 import calendar
 import csv
 import datetime as dt
+import concurrent.futures
 import json
 import math
 import os
+import queue
 import struct
 import threading
 import time
+import urllib.request
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import goodwe
+
+import ovladani
 
 IP = os.environ.get("GW_IP", "192.168.68.113")
 PORT = int(os.environ.get("GW_PORT", "8080"))
@@ -36,6 +41,111 @@ SEMS_PATH = os.path.join(HERE, "goodwe_sems.csv")   # historie ze SEMS (vytvoř�
 
 state = {"now": None, "hist": [], "err": None, "cnt": []}
 lock = threading.Lock()
+
+# --- spotové ceny (burza OTE, kurz ČNB) ---
+OTE_URL = "https://www.ote-cr.cz/cs/kratkodobe-trhy/elektrina/denni-trh/chart-data?report_date="
+CNB_URL = "https://www.cnb.cz/cs/financni-trhy/devizovy-trh/kurzy-devizoveho-trhu/kurzy-devizoveho-trhu/denni_kurz.txt"
+MARZE = float(os.environ.get("GW_MARZE", "0"))          # přirážka dodavatele v Kč/kWh (výchozí 0 = čistá burza)
+PRICE_EVERY = 900                                       # sekund mezi stažením cen
+prices = {"days": {}, "kurz": None, "err": None, "ts": None}
+
+
+def http_get(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": "goodwe-dashboard"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def fetch_day(day):
+    """Hodinové ceny OTE v EUR/MWh pro daný den, nebo None, když je ještě nezveřejnila."""
+    raw = json.loads(http_get(OTE_URL + day.isoformat()).decode("utf-8"))
+    for line in raw["data"]["dataLine"]:
+        if str(line.get("title", "")).startswith("60min"):
+            pts = [float(p["y"]) for p in line.get("point", [])]
+            if pts and len(pts) % 4 == 0:
+                return pts[::4]          # řada je po čtvrthodinách, hodinová cena se opakuje 4x
+    return None
+
+
+def fetch_kurz():
+    for line in http_get(CNB_URL).decode("cp1250").splitlines():
+        p = line.split("|")
+        if len(p) > 4 and p[3] == "EUR":
+            return float(p[4].replace(",", ".")) / float(p[2].replace(",", "."))
+    return None
+
+
+def price_thread():
+    while True:
+        wait = PRICE_EVERY
+        today = dt.date.today()
+        days, err = {}, None
+        for d in (today, today + dt.timedelta(days=1)):
+            try:
+                h = fetch_day(d)
+                if h:
+                    days[d.isoformat()] = h
+            except Exception as e:
+                if d == today:
+                    err = f"{type(e).__name__}: {e}"
+        try:
+            kurz = fetch_kurz()
+        except Exception:
+            kurz = None
+        with lock:
+            if days:
+                prices["days"] = days
+            else:   # při výpadku nech jen dnešek a budoucnost, včerejší ceny by byly zavádějící
+                prices["days"] = {k: v for k, v in prices["days"].items() if k >= today.isoformat()}
+            if kurz:
+                prices["kurz"] = kurz
+            prices["err"] = None if prices["days"] else (err or "OTE zatím nevrátilo žádné ceny")
+            prices["ts"] = time.time()
+        if not days:
+            wait = 300
+        time.sleep(wait)
+
+
+# --- příkazy pro měnič: handler je jen zařadí do fronty, provádí je smyčka poll(), která už má spojení ---
+cmd_q = queue.Queue()
+CMD_VALID_S = 25      # po této době se nevyřízený příkaz zahodí a nic se nezmění
+
+
+def run_cmd(fn, timeout=40):
+    fut = concurrent.futures.Future()
+    cmd_q.put((fn, fut, time.time() + CMD_VALID_S))
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        raise RuntimeError("Měnič neodpověděl včas. Nevím, jestli se změna provedla, zkontrolujte stav.")
+
+
+def fail_pending(msg):
+    while True:
+        try:
+            _, fut, _ = cmd_q.get_nowait()
+        except queue.Empty:
+            return
+        fut.set_exception(RuntimeError(msg))
+
+
+async def run_control(inv, soc):
+    try:
+        await ovladani.tick(inv, soc)
+    except Exception as e:  # noqa: BLE001
+        ovladani._log("automaticky", "CHYBA při návratu zpět", str(e))
+    while True:
+        try:
+            fn, fut, deadline = cmd_q.get_nowait()
+        except queue.Empty:
+            return
+        if time.time() > deadline:
+            fut.set_exception(RuntimeError("Příkaz vypršel dřív, než ho měnič mohl provést. Nic se nezměnilo."))
+            continue
+        try:
+            fut.set_result(await fn(inv, soc))
+        except Exception as e:  # noqa: BLE001
+            fut.set_exception(e)
 
 
 def read_csv(path, ncols, min_ts=0.0):
@@ -112,10 +222,12 @@ async def poll():
             append_csv(CSV_PATH, row)
             if cnt:
                 append_csv(CNT_PATH, cnt)
+            await run_control(inv, soc)
         except Exception as e:  # noqa: BLE001 - chceme přežít jakýkoli výpadek
             with lock:
                 state["err"] = str(e) or type(e).__name__
             inv = None
+            fail_pending("Měnič teď není dostupný. Nic se nezměnilo.")
         await asyncio.sleep(INTERVAL)
 
 
@@ -340,7 +452,33 @@ background:
  radial-gradient(900px 500px at 100% 0%,rgba(57,135,229,.08),transparent 65%),
  radial-gradient(900px 600px at 50% 120%,rgba(214,179,112,.07),transparent 60%),
  var(--bg);background-attachment:fixed}
-.wrap{max-width:1120px;margin:0 auto;padding:28px 18px 56px}
+.wrap{max-width:1780px;margin:0 auto;padding:28px 18px 56px}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr) 340px;grid-template-areas:"side main ctrl";gap:22px;align-items:start}
+.layout>main{grid-area:main;min-width:0}
+.side{grid-area:side}.ctrl{grid-area:ctrl}
+.chip.on{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold3));color:#15110a;border-color:transparent;font-weight:600}
+.cgrp{padding:14px 0 6px;border-top:1px solid rgba(214,179,112,.14)}
+.cgrp h3{font:400 10.5px/1.2 "Segoe UI",system-ui,sans-serif;margin:0 0 10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+.cgrp label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-top:6px}
+.cgrp label b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.cgrp input[type=range]{width:100%;accent-color:var(--gold);margin:4px 0}
+.cgrp .btn{margin:8px 8px 0 0}
+.cgrp .chips{display:flex;flex-wrap:wrap}
+.btn.go{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold3));color:#15110a;border-color:transparent;font-weight:600}
+.cmsg{min-height:18px;font-size:12px;margin:10px 0 0;color:var(--ink2)}
+.pin{width:100%;font:inherit;padding:9px 14px;margin-bottom:8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink)}
+.chargenote{font-size:12px;color:var(--gold2);background:rgba(214,179,112,.08);border:1px solid rgba(214,179,112,.2);border-radius:12px;padding:8px 12px;margin:8px 0 0}
+.prnow .v{font:300 40px/1.1 Georgia,"Times New Roman",serif;font-variant-numeric:tabular-nums;color:var(--ink)}
+.prnow .v small{font:400 13px "Segoe UI",system-ui,sans-serif;color:var(--gold);margin-left:6px;letter-spacing:.1em}
+.prnow .s{font-size:12px;color:var(--muted);margin-top:4px}
+.prsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 12px;padding:12px 0;border-top:1px solid rgba(214,179,112,.14);border-bottom:1px solid rgba(214,179,112,.14)}
+.prsum .v{font:300 17px/1.1 Georgia,"Times New Roman",serif;font-variant-numeric:tabular-nums}
+.prsum .l{font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+.prrow{display:grid;grid-template-columns:30px 1fr 44px;align-items:center;gap:8px;font-size:12px;font-variant-numeric:tabular-nums;padding:2px 4px;color:var(--ink2);border-radius:6px}
+.prrow i{display:block;height:7px;border-radius:4px;min-width:3px}
+.prrow b{font-weight:400;text-align:right}
+.prrow.now{background:rgba(214,179,112,.12);color:var(--gold2);font-weight:600}
+.prrow.now b{font-weight:600}
 header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:22px}
 h1{font:400 13px/1 "Segoe UI",system-ui,sans-serif;margin:0;letter-spacing:.42em;text-transform:uppercase;color:var(--gold2)}
 h1::after{content:"";display:block;width:54px;height:1px;margin-top:12px;background:linear-gradient(90deg,var(--gold),transparent)}
@@ -415,8 +553,11 @@ table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:ta
 th{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:400}
 th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:first-child,td:first-child{text-align:left}
 .tblbox{display:none;max-height:320px;overflow:auto;margin-top:10px}
+@media (max-width:1400px){.layout{grid-template-columns:300px minmax(0,1fr);grid-template-areas:"side main" "ctrl main"}}
+@media (max-width:1000px){.layout{grid-template-columns:1fr;grid-template-areas:"main" "ctrl" "side"}}
 @media (max-width:700px){
  .wrap{padding:max(18px,env(safe-area-inset-top)) 12px 40px}
+ .prnow .v{font-size:34px}
  .card{padding:16px 14px;border-radius:18px;margin-bottom:16px}
  h1 small{font-size:24px}
  nav a{padding:6px 12px;margin-left:4px}
@@ -434,10 +575,19 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <h1>Solární elektrárna<small id="model">GW10K-ET</small></h1>
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
-  <nav><a href="#live">Živě</a><a href="#analysis">Analýza</a></nav>
+  <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
  </div>
 </header>
 
+<div class="layout">
+<aside class="side"><section id="prices" class="card">
+ <div class="bar"><h2>Spotová cena</h2><span class="seg" id="prday"></span></div>
+ <div class="prnow" id="prnow"><p class="hint">Načítám ceny…</p></div>
+ <div class="prsum" id="prsum" style="display:none"></div>
+ <div id="prrows"></div>
+ <p class="hint" id="prfoot" style="margin:12px 0 0"></p>
+</section></aside>
+<main>
 <section id="live" class="card">
  <div class="bar"><h2>Tok energie teď</h2><span class="hint" id="modeinfo"></span></div>
  <svg id="flow" viewBox="0 0 900 390" role="img" aria-label="Tok energie mezi solárem, sítí, domem, spotřebou a baterií"></svg>
@@ -469,6 +619,12 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="tblbox" id="tbl2"></div>
  <p class="hint" style="margin:10px 0 0">Prodej a nákup jsou z elektroměru. „Vlastní spotřeba“ = výroba, která nešla do sítě. „Soběstačnost“ = podíl spotřeby, který nebyl nakoupen. Nabíjení baterie ze sítě se počítá do nákupu, hodnoty jsou proto orientační.</p>
 </section>
+</main>
+<aside class="ctrl"><section id="ctl" class="card">
+ <div class="bar"><h2>Ovládání</h2><span class="hint" id="ctlstate"></span></div>
+ <div id="ctlbody"><p class="hint">Načítám…</p></div>
+</section></aside>
+</div>
 </div>
 
 <script>
@@ -686,6 +842,122 @@ function drawTable2(P){
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
 $('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
 
+/* ---------- spotové ceny ---------- */
+let PR=null, prDay=null;
+const hh=h=>String(h).padStart(2,'0');
+function drawPrices(){
+  const now=$('prnow'),sum=$('prsum'),rows=$('prrows'),tabs=$('prday'),foot=$('prfoot');
+  const days=PR&&PR.days?Object.keys(PR.days).sort():[];
+  if(!PR||!days.length){
+    now.innerHTML='<p class="hint">'+(PR?'Ceny z OTE se nepodařilo načíst'+(PR.err?' ('+PR.err+')':'')+'. Zkusím to znovu za pár minut.':'Načítám ceny…')+'</p>';
+    sum.style.display='none';rows.innerHTML='';tabs.innerHTML='';foot.textContent='';return;
+  }
+  if(!prDay||!PR.days[prDay])prDay=PR.days[PR.today]?PR.today:days[0];
+  const kc=PR.kurz!=null, unit=kc?'Kč/kWh':'EUR/MWh', dec=kc?2:1;
+  const conv=e=>kc?e/1000*PR.kurz+(PR.marze||0):e;
+  const vals=PR.days[prDay].map(conv), n=vals.length;
+  const isToday=prDay===PR.today, nowH=new Date().getHours();
+  tabs.innerHTML=days.length>1?days.map(d=>`<button data-d="${d}" class="${d===prDay?'on':''}">${d===PR.today?'Dnes':'Zítra'}</button>`).join(''):'';
+  tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>{prDay=b.dataset.d;drawPrices();});
+  const avg=vals.reduce((a,v)=>a+v,0)/n, lo=Math.min(...vals), hi=Math.max(...vals);
+  const iLo=vals.indexOf(lo), iHi=vals.indexOf(hi);
+  if(isToday&&nowH<n){
+    now.innerHTML=`<div class="v">${fmtK(vals[nowH],dec)}<small>${unit}</small></div><div class="s">${hh(nowH)}:00–${hh(nowH+1)}:00 · ${fmtK(PR.days[prDay][nowH],1)} EUR/MWh</div>`;
+  }else{
+    now.innerHTML=`<div class="v">${fmtK(avg,dec)}<small>${unit}</small></div><div class="s">průměr dne</div>`;
+  }
+  sum.style.display='grid';
+  sum.innerHTML=[['nejlevnější',lo,iLo],['průměr',avg,null],['nejdražší',hi,iHi]]
+    .map(([l,v,i])=>`<div><div class="v">${fmtK(v,dec)}</div><div class="l">${l}${i!=null?' · '+hh(i)+' h':''}</div></div>`).join('');
+  const s=vals.slice().sort((a,b)=>a-b), q25=s[Math.floor(n*.25)], q75=s[Math.floor(n*.75)], base=Math.min(0,lo), span=(hi-base)||1;
+  rows.innerHTML=vals.map((v,h)=>{
+    const col=hi===lo?'--gold3':v<=q25?'--good':v>=q75?'--s4':'--gold3', w=Math.max(1,(v-base)/span*100);
+    return `<div class="prrow${isToday&&h===nowH?' now':''}"><span>${hh(h)}</span><i style="width:${w.toFixed(1)}%;background:${css(col)}"></i><b>${fmtK(v,dec)}</b></div>`;
+  }).join('');
+  foot.textContent='Zdroj: burza OTE'+(kc?', kurz ČNB '+fmtK(PR.kurz,3)+' Kč/EUR':'')+'. '+
+    (PR.marze?'Včetně přirážky '+fmtK(PR.marze,2)+' Kč/kWh. ':'Stejná cena jako v aplikaci dodavatele. ')+
+    (days.length<2?'Ceny na zítřek OTE zveřejňuje odpoledne.':'');
+}
+async function tickPrices(){
+  try{PR=await (await fetch('/api/ceny')).json();}catch(e){}
+  drawPrices();
+}
+
+/* ---------- ovládání měniče ---------- */
+let PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
+const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
+const MODE_LBL={GENERAL:'Základní',ECO:'Eco',SELF_USE:'Vlastní spotřeba',PEAK_SHAVING:'Ořezání špiček',BACKUP:'Záloha',OFF_GRID:'Ostrovní'};
+function priceTxt(){
+  if(!PR||!PR.days||!PR.days[PR.today]||PR.kurz==null)return '';
+  const e=PR.days[PR.today][new Date().getHours()];
+  return e==null?'':' Cena elektřiny teď: '+fmtK(e/1000*PR.kurz+(PR.marze||0),2)+' Kč/kWh.';
+}
+async function ctlLoad(){
+  ctlMsg='';
+  try{const j=await (await fetch('/api/ovladani')).json();CTLEN=j.enabled;CTL=j.status;CTLERR=j.err;}
+  catch(e){CTLERR='dashboard neodpovídá';}
+  drawCtl();
+}
+async function ctlPost(action,params){
+  if(ctlBusy)return;
+  ctlBusy=true;ctlAct=Date.now();ctlMsg='Odesílám…';$('ctlmsg')&&($('ctlmsg').textContent=ctlMsg);
+  try{
+    const r=await fetch('/api/ovladani',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:PIN,action,params:params||{}})});
+    const j=await r.json();
+    if(r.status===403){PIN=null;UNLOCKED=false;}
+    if(j.ok){CTL=j.status;CTLERR=null;UNLOCKED=true;ctlMsg=action==='overit'?'':'Hotovo, změna je v měniči.';delete cv.ms;delete cv.ex;}
+    else ctlMsg='Nepovedlo se: '+(j.error||r.status);
+  }catch(e){ctlMsg='Nepovedlo se: '+e.message;}
+  ctlBusy=false;drawCtl();
+}
+function ask(text,action,params){if(confirm(text))ctlPost(action,params);}
+function drawCtl(){
+  const el=$('ctlbody'),st=$('ctlstate');
+  if(CTLEN===null){return;}
+  if(!CTLEN){st.textContent='vypnuto';
+    el.innerHTML='<p class="hint">Ovládání je vypnuté, protože není nastavený přístupový kód. V PowerShellu spusťte <code>setx GW_PIN "váš-kód"</code> (aspoň 6 znaků) a dashboard znovu spusťte.</p>';return;}
+  if(!CTL){st.textContent='nedostupné';
+    el.innerHTML='<p class="hint">Měnič teď neodpovídá'+(CTLERR?' ('+CTLERR+')':'')+'.</p><button class="btn" id="cretry">Zkusit znovu</button>';
+    $('cretry').onclick=ctlLoad;return;}
+  if(!UNLOCKED){st.textContent='zamčeno';
+    el.innerHTML='<input class="pin" id="pin" type="password" autocomplete="off" placeholder="Přístupový kód"><button class="btn go" id="unlock">Odemknout</button><p class="cmsg" id="ctlmsg">'+ctlMsg+'</p>';
+    const go=()=>{PIN=$('pin').value;if(PIN)ctlPost('overit');};
+    $('unlock').onclick=go;$('pin').onkeydown=e=>{if(e.key==='Enter')go();};return;}
+  st.textContent='odemčeno';
+  const S=CTL,soc=NOW?Math.round(NOW.soc):null,P=S.puvodne||{};
+  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??80, cp=cv.cp??100;
+  const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">Vrátit na původní (${txt(P[g])})</button>`:'';
+  let h=`<div class="cgrp" style="border-top:0;padding-top:0"><h3>Režim</h3><div class="chips">`+
+    ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}">${MODE_LBL[m]}</button>`).join('')+
+    `</div>`+(S.work_mode==='OFF_GRID'?'<p class="hint">Měnič je v ostrovním režimu, ten odsud nejde měnit.</p>':'')+back('mode',x=>MODE_LBL[x]||x)+`</div>`;
+  h+=`<div class="cgrp"><h3>Nabít baterii teď</h3>`+
+    (S.charge?`<div class="chargenote">Probíhá nabíjení do ${S.charge.target} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
+    `<div class="hint">Baterie teď: ${soc==null?'–':soc+' %'}. Nabíjí se i ze sítě.</div>
+    <label>Cílový stav <b id="cs_v">${cs} %</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
+    <label>Výkon nabíjení <b id="cp_v">${cp} %</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
+    <button class="btn go" id="cgo">Nabíjet</button>`)+`</div>`;
+  h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: ${S.min_soc} %.</div>
+    <label>Nejnižší stav <b id="ms_v">${ms} %</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
+    <button class="btn go" id="mgo">Nastavit</button>${back('min_soc',x=>x+' %')}</div>`;
+  h+=`<div class="cgrp"><h3>Limit prodeje do sítě</h3><div class="hint">Teď: ${fmtK(S.export_limit,0)} W. Nula znamená neprodávat.</div>
+    <label>Limit <b id="ex_v">${fmtK(ex,0)} W</b></label><input type="range" id="ex" min="0" max="10000" step="100" value="${ex}">
+    <button class="btn go" id="ego">Nastavit</button>${back('export',x=>fmtK(x,0)+' W')}</div>`;
+  if(Object.keys(P).length>1)h+=`<div class="cgrp"><button class="btn" id="call">Vrátit vše na původní</button></div>`;
+  h+=`<p class="cmsg" id="ctlmsg">${ctlMsg}</p>`;
+  el.innerHTML=h;
+  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask('Přepnout režim měniče na „'+MODE_LBL[m]+'“?','mode',{mode:m});});
+  el.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>ask('Vrátit toto nastavení na původní hodnotu?','revert',{group:b.dataset.back}));
+  [['cs','%'],['cp','%'],['ms','%'],['ex','W']].forEach(([id,u])=>{const r=$(id);if(!r)return;
+    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=(id==='ex'?fmtK(r.value,0):r.value)+' '+u;};});
+  if($('cgo'))$('cgo').onclick=()=>ask('Nabíjet baterii na '+$('cs').value+' % výkonem '+$('cp').value+' %? Nabíjí se i ze sítě.'+priceTxt()+' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).','charge',{target:+$('cs').value,power:+$('cp').value});
+  if($('cstop'))$('cstop').onclick=()=>ask('Zrušit nabíjení a vrátit režim, jaký byl před ním?','revert',{group:'charge'});
+  $('mgo').onclick=()=>ask('Nejnižší stav baterie při vybíjení nastavit na '+$('ms').value+' %?','min_soc',{value:+$('ms').value});
+  $('ego').onclick=()=>ask('Limit prodeje do sítě nastavit na '+fmtK($('ex').value,0)+' W?','export',{value:+$('ex').value});
+  if($('call'))$('call').onclick=()=>ask('Vrátit všechna změněná nastavení na původní hodnoty?','revert',{group:'all'});
+}
+setInterval(()=>{if(UNLOCKED&&Date.now()-ctlAct>600000){PIN=null;UNLOCKED=false;ctlMsg='Po 10 minutách nečinnosti se ovládání zamklo.';drawCtl();}},30000);
+setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='range'||a.id==='pin')))ctlLoad();},60000);
+
 /* ---------- smyčka ---------- */
 function render(){
   drawFlow();drawToday();
@@ -705,7 +977,7 @@ async function tickStats(){
   drawStats();
 }
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
-tick();tickStats();setInterval(tick,5000);setInterval(tickStats,60000);
+tick();tickStats();tickPrices();ctlLoad();setInterval(tick,5000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}
 </script></body></html>
 """
@@ -782,6 +1054,20 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/stats"):
             body = json.dumps(compute_stats()).encode()
             ctype = "application/json"
+        elif path == "/api/ovladani":
+            out = {"enabled": ovladani.enabled(), "status": None, "err": None}
+            if out["enabled"]:
+                try:
+                    out["status"] = run_cmd(lambda inv, soc: ovladani.status(inv))
+                except Exception as e:  # noqa: BLE001
+                    out["err"] = str(e) or type(e).__name__
+            body = json.dumps(out).encode()
+            ctype = "application/json"
+        elif self.path.startswith("/api/ceny"):
+            with lock:
+                body = json.dumps({"today": dt.date.today().isoformat(), "days": prices["days"], "kurz": prices["kurz"],
+                                   "marze": MARZE, "err": prices["err"], "ts": prices["ts"]}).encode()
+            ctype = "application/json"
         elif self.path.startswith("/api"):
             with lock:
                 body = json.dumps({"now": state["now"], "hist": state["hist"], "err": state["err"]}).encode()
@@ -796,12 +1082,52 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        """Jediný zápis do měniče: /api/ovladani. Vyžaduje přístupový kód."""
+        if self.path.split("?")[0] != "/api/ovladani":
+            return self._json(404, {"ok": False, "error": "Neznámá adresa"})
+        if "application/json" not in self.headers.get("Content-Type", ""):
+            return self._json(415, {"ok": False, "error": "Očekává se JSON"})
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 < n <= 4096:
+                raise ValueError
+            req = json.loads(self.rfile.read(n).decode("utf-8"))
+            action = req["action"]
+            params = req.get("params") or {}
+            if not isinstance(action, str) or not isinstance(params, dict):
+                raise ValueError
+        except (ValueError, KeyError, UnicodeDecodeError):
+            return self._json(400, {"ok": False, "error": "Neplatný požadavek"})
+        ok, msg = ovladani.check_pin(req.get("pin"))
+        if not ok:
+            return self._json(403, {"ok": False, "error": msg})
+        who = self.client_address[0]
+        try:
+            res = run_cmd(lambda inv, soc: ovladani.execute(inv, action, params, who, soc))
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        except Exception as e:  # noqa: BLE001
+            ovladani._log(who, "CHYBA " + action, str(e) or type(e).__name__)
+            return self._json(500, {"ok": False, "error": str(e) or type(e).__name__})
+        self._json(200, {"ok": True, "status": res})
+
     def log_message(self, *a):
         pass
 
 
 if __name__ == "__main__":
     load_history()
+    ovladani.load_backup()
     sems_data = load_sems()
     n_sems = sum(len(v) for v in sems_data.values())
     print(f"Složka s dashboardem: {HERE}")
@@ -811,6 +1137,7 @@ if __name__ == "__main__":
         print("POZOR: historie ze SEMS NENÍ načtena. Soubor goodwe_sems.csv musí ležet ve stejné složce jako goodwe_dashboard.py")
         print("       (přesný název, bez čísla v závorce). Bez něj mají Týden, Měsíc a Rok jen data od dnešního spuštění.")
     threading.Thread(target=poll_thread, daemon=True).start()
+    threading.Thread(target=price_thread, daemon=True).start()
     try:
         import socket
         sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -819,6 +1146,7 @@ if __name__ == "__main__":
         sk.close()
     except OSError:
         lan_ip = None
+    print("Ovládání měniče: " + ("ZAPNUTO (přístupový kód nastaven)" if ovladani.enabled() else "vypnuto (chybí proměnná GW_PIN)"))
     print(f"Dashboard běží: http://localhost:{PORT}   (ukončení: Ctrl+C)")
     if lan_ip:
         print(f"Z telefonu na stejné WiFi: http://{lan_ip}:{PORT}")

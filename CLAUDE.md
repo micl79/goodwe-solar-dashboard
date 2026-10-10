@@ -21,3 +21,13 @@ Komunikace s uživatelem je česky.
 ## Konvence
 - Barvy dat jsou validované (modrá, oranžová, zelená, jantarová, magenta) pro tmavý povrch; zlatá je jen ozdobná.
 - Žádný rm -rf ani mazání v uživatelově složce; osobní CSV jsou v `.gitignore`.
+
+## Ovládání měniče (`ovladani.py`)
+- Jediný zápis do měniče je `POST /api/ovladani`, vyžaduje přístupový kód z proměnné prostředí `GW_PIN` (bez ní je ovládání vypnuté; kód se nikdy neukládá do souborů). Po 5 chybách za sebou zámek na 5 minut.
+- Zápisy provádí smyčka `poll()` přes frontu (`cmd_q`), stejným spojením jako čtení. Příkaz starší než 25 s se zahodí.
+- Před první změnou skupiny (`mode`, `charge`, `min_soc`, `export`) se uloží původní hodnota do `ovladani_zaloha.json`; "Vrátit na původní" ji obnoví. Nabíjení má vlastní zálohu (stav těsně před nabíjením) a samo se vrací zpět po dosažení cíle nebo po 8 h.
+- Ostrovní režim (OFF_GRID) je záměrně vynechán.
+- Zálohy 1bajtových nastavení se vracejí přes `write_setting` (sdílejí 2bajtový registr se sousedem), jen Eco plán 1 (12 B) po bajtech.
+- Každá změna se zapisuje do `ovladani.log` (bez kódu).
+- Ceny: burza OTE (hodinová řada 60min, `report_date=RRRR-MM-DD`), kurz ČNB; shodují se s cenou v aplikaci dodavatele (ověřeno 9. 10. 9:00 = 3,93 Kč/kWh).
+
