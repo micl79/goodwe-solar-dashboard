@@ -34,6 +34,6 @@ Komunikace s uživatelem je česky.
 ## Upozornění (`upozorneni.py`)
 - Web Push přes `pywebpush` (nepovinný balíček). Klíč VAPID se při prvním startu vytvoří v `push_klic.json`, přihlášené telefony jsou v `push_odberatele.json` (obojí v .gitignore, nikdy nenahrávat).
 - Přihlášení k upozornění vyžaduje stejný přístupový kód jako ovládání. Události: baterie plná (po poklesu pod 90 %), nabíjení skončilo, měnič 10 min nedostupný a znovu online.
-- Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Zatím neověřeno na skutečném telefonu.
+- Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Ověřeno na skutečném iPhonu 10. 10. 2026 (zkouška přišla).
 - Provoz: dashboard běží z projektové složky (data CSV jsou tady). Staré soubory z plochy jsou v `Desktop\solar_stare_soubory`. Druhá instance se nespustí (`allow_reuse_address = False`).
 
