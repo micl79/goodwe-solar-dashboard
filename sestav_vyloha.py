@@ -16,7 +16,7 @@ OUT = os.path.join(HERE, "vyloha", "public")
 
 
 DEMO = r"""/* ---------- ukázka ovládání: běží jen v prohlížeči návštěvníka, na server se NIC neodesílá ---------- */
-CTLEN=true;UNLOCKED=true;
+CTLEN=true;UNLOCKED=true;window.DEMO_MODE=true;
 CTL={work_mode:'ECO',min_soc:15,export_limit:4000,puvodne:{},charge:null};
 async function ctlLoad(){drawCtl();}
 async function ctlPost(action,p){

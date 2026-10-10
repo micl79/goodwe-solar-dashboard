@@ -509,6 +509,23 @@ background:
 .cmsg{min-height:18px;font-size:12px;margin:10px 0 0;color:var(--ink2)}
 .pin{width:100%;font:inherit;padding:9px 14px;margin-bottom:8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink)}
 .chargenote{font-size:12px;color:var(--gold2);background:rgba(214,179,112,.08);border:1px solid rgba(214,179,112,.2);border-radius:12px;padding:8px 12px;margin:8px 0 0}
+.dlg{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.62);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);animation:dlgfade .16s ease-out}
+.dlg[hidden]{display:none}
+.dlgbox{position:relative;width:100%;max-width:440px;background:var(--card-bg);border:1px solid rgba(214,179,112,.3);border-radius:22px;padding:26px 26px 22px;box-shadow:var(--card-shadow),0 40px 80px -20px rgba(0,0,0,.7);animation:dlgup .2s ease-out}
+.dlgbox::before{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(240,217,166,.6),transparent)}
+.dlgbox h3{font:300 24px/1.2 Georgia,"Times New Roman",serif;margin:0 0 4px;color:var(--ink)}
+.dlgbox h3::after{content:"";display:block;width:44px;height:1px;margin:12px 0 14px;background:linear-gradient(90deg,var(--gold),transparent)}
+.dlgbox p{margin:0;color:var(--ink2);font-size:14.5px;line-height:1.55}
+.dlgbox .dlgnote{margin-top:12px;font-size:12px;color:var(--gold2);letter-spacing:.04em}
+.dlgbtn{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.dlgbtn .btn{margin:0;padding:10px 22px;font-size:13px}
+@keyframes dlgfade{from{opacity:0}to{opacity:1}}
+@keyframes dlgup{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.dlg,.dlgbox{animation:none}}
+:root[data-theme="light"] .dlg{background:rgba(29,26,20,.42)}
+@media (max-width:700px){.dlg{align-items:flex-end;padding:0}.dlgbox{max-width:none;border-radius:22px 22px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom));animation:dlgsheet .24s ease-out}
+ .dlgbtn{flex-direction:column-reverse}.dlgbtn .btn{width:100%;text-align:center;padding:13px 22px;font-size:14px}}
+@keyframes dlgsheet{from{transform:translateY(100%)}to{transform:none}}
 .prnow .v{font:300 40px/1.1 Georgia,"Times New Roman",serif;font-variant-numeric:tabular-nums;color:var(--ink)}
 .prnow .v small{font:400 13px "Segoe UI",system-ui,sans-serif;color:var(--gold);margin-left:6px;letter-spacing:.1em}
 .prnow .s{font-size:12px;color:var(--muted);margin-top:4px}
@@ -669,6 +686,9 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
 </div>
 </div>
 
+<div class="dlg" id="dlg" hidden><div class="dlgbox" role="alertdialog" aria-modal="true" aria-labelledby="dlgt" aria-describedby="dlgp">
+ <h3 id="dlgt"></h3><p id="dlgp"></p><div class="dlgnote" id="dlgn"></div>
+ <div class="dlgbtn"><button class="btn" id="dlgno" type="button">Zrušit</button><button class="btn go" id="dlgyes" type="button">Potvrdit</button></div></div></div>
 <script>
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -952,7 +972,24 @@ async function ctlPost(action,params){
   }catch(e){ctlMsg='Nepovedlo se: '+e.message;}
   ctlBusy=false;drawCtl();
 }
-/*PUBLIC-STRIP-END*/function ask(text,action,params){if(confirm(text))ctlPost(action,params);}
+/*PUBLIC-STRIP-END*/const ASKT={mode:'Přepnout režim',charge:'Nabít baterii',min_soc:'Nejnižší stav baterie',export:'Limit prodeje do sítě',revert:'Vrátit na původní'};
+function dlgOpen(title,text,note,yes){
+  return new Promise(res=>{
+    const d=$('dlg'),prev=document.activeElement,no=$('dlgno'),ok=$('dlgyes');
+    $('dlgt').textContent=title;$('dlgp').textContent=text;$('dlgn').textContent=note||'';ok.textContent=yes||'Potvrdit';
+    d.hidden=false;document.body.style.overflow='hidden';no.focus();
+    const done=v=>{d.hidden=true;document.body.style.overflow='';d.removeEventListener('keydown',key);d.removeEventListener('click',bg);
+      no.onclick=ok.onclick=null;if(prev&&prev.focus)prev.focus();res(v);};
+    const key=e=>{if(e.key==='Escape'){e.preventDefault();done(false);}
+      else if(e.key==='Tab'){const a=[no,ok],i=a.indexOf(document.activeElement);e.preventDefault();a[(i+(e.shiftKey?-1:1)+2)%2].focus();}};
+    const bg=e=>{if(e.target===d)done(false);};
+    no.onclick=()=>done(false);ok.onclick=()=>done(true);
+    d.addEventListener('keydown',key);d.addEventListener('click',bg);
+  });
+}
+function ask(text,action,params){
+  dlgOpen(action==='revert'?(params&&params.group==='charge'?'Zrušit nabíjení':params&&params.group==='all'?'Vrátit vše na původní':ASKT.revert):(ASKT[action]||'Potvrdit změnu'),text,window.DEMO_MODE?'Ukázka: nic se neodešle.':'','Provést').then(ok=>{if(ok)ctlPost(action,params);});
+}
 function drawCtl(){
   const el=$('ctlbody'),st=$('ctlstate');
   if(CTLEN===null){return;}
