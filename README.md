@@ -61,3 +61,5 @@ powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $s=(
 - Veřejná výloha (`vyloha/`) ukazuje živá data z domu. Z přesných hodnot jde poznat, kdy nejste doma. Zvažte zpoždění (`GW_VEREJNE_ZPOZDENI`).
 - Ostrovní režim (OFF_GRID) v ovládání záměrně není.
 
+## Licence
+MIT, viz soubor `LICENSE`. Software je poskytován bez záruky (viz též Bezpečnost a odpovědnost výše).
