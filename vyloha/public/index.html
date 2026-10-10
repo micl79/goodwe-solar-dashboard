@@ -160,8 +160,6 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  .donutrow{flex-direction:column;align-items:flex-start}
 }
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
-@media (min-width:1401px){.layout{grid-template-columns:300px minmax(0,1fr)!important;grid-template-areas:"side main"!important}}
-.wrap{max-width:1300px}
 </style></head><body><div class="wrap">
 
 <header>
@@ -169,7 +167,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <span class="seg themeseg" id="themeseg" aria-label="Vzhled"><button data-t="dark">Tmavý</button><button data-t="light">Světlý</button><button data-t="auto">Auto</button></span>
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
-  <nav><a href="#live">Živě</a><a href="#prices">Ceny</a></nav>
+  <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
  </div>
 </header>
 
@@ -201,13 +199,27 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="tblbox" id="tbl"><table><thead><tr><th>Čas</th><th>FVE</th><th>Dům</th><th>Síť</th><th>Baterie</th><th>SOC</th></tr></thead><tbody id="tbody"></tbody></table></div>
 </section>
 
-
+<section id="analysis" class="card">
+ <div class="bar"><h2>Analýza energie</h2>
+  <span class="seg" id="per"><button data-p="7">Týden</button><button data-p="30" class="on">Měsíc</button><button data-p="365">Rok</button><button data-p="all">Celkem</button></span></div>
+ <div class="note" id="note"></div>
+ <div class="kpis" id="kpis"></div>
+ <div class="ratios" id="ratios"></div>
+ <div class="bar" style="margin-bottom:6px"><h2 id="barstitle">Vývoj v čase</h2>
+  <div><span id="chips"></span><button class="btn" id="tbl2btn">Tabulka</button></div></div>
+ <div class="cbox"><svg class="chart" id="bars"></svg><div class="tip" id="btip"></div></div>
+ <div class="tblbox" id="tbl2"></div>
+ <p class="hint" style="margin:10px 0 0">Prodej a nákup jsou z elektroměru. „Vlastní spotřeba“ = výroba, která nešla do sítě. „Soběstačnost“ = podíl spotřeby, který nebyl nakoupen. Nabíjení baterie ze sítě se počítá do nákupu, hodnoty jsou proto orientační.</p>
+</section>
 </main>
-
+<aside class="ctrl"><section id="ctl" class="card">
+ <div class="bar"><h2>Ovládání</h2><span class="hint" id="ctlstate"></span></div>
+ <div id="ctlbody"><p class="hint">Načítám…</p></div>
+</section></aside>
 </div>
 </div>
 
-<script>function drawStats(){}
+<script>
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const C=["--s1","--s2","--s3","--s4"], NAMES=["Výroba FVE","Spotřeba domu","Síť","Baterie"];
@@ -339,6 +351,88 @@ function drawTable(){
   $('tbody').innerHTML=rows.map(r=>`<tr><td>${hhmmss(r[0])}</td><td>${fmtW(r[1])}</td><td>${fmtW(r[2])}</td><td>${fmtW(r[3])}</td><td>${fmtW(r[4])}</td><td>${r[5].toFixed(0)} %</td></tr>`).join('');
 }
 
+/* ---------- analýza ---------- */
+const SER=[{k:0,n:'Výroba',c:'--s1'},{k:1,n:'Spotřeba',c:'--s2'},{k:3,n:'Prodej do sítě',c:'--s3'},{k:2,n:'Nákup ze sítě',c:'--s5'}];
+function donut(frac,color,label){
+  const r=46,c=2*Math.PI*r,f=frac==null||!isFinite(frac)?0:Math.max(0,Math.min(1,frac));
+  return `<svg class="donut" width="116" height="116" viewBox="0 0 116 116"><circle cx="58" cy="58" r="${r}" fill="none" stroke="${css('--grid')}" stroke-width="12"/>
+  <circle cx="58" cy="58" r="${r}" fill="none" stroke="${css(color)}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(c*f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 58 58)"/>
+  <text x="58" y="64" text-anchor="middle" style="font-size:22px;font-weight:700">${label}</text></svg>`;
+}
+function stack(parts){
+  const tot=parts.reduce((a,p)=>a+Math.max(0,p.v),0)||1;
+  return `<div class="stack">${parts.map(p=>`<div style="width:${(Math.max(0,p.v)/tot*100).toFixed(1)}%;background:${css(p.c)}"></div>`).join('')}</div>
+  <div class="stackl">${parts.map(p=>`<span><span class="sw" style="background:${css(p.c)}"></span> ${p.n}: <b>${fmtK(p.v)} kWh</b> (${pct(Math.max(0,p.v)/tot)})</span>`).join('')}</div>`;
+}
+function drawStats(){
+  const P=STATS&&STATS.periods&&STATS.periods[per];
+  const note=$('note');
+  if(!P){note.style.display='block';note.textContent='Zatím nejsou uložená žádná počítadla energie. Počkej pár minut, než se uloží první záznam.';
+    $('kpis').innerHTML='';$('ratios').innerHTML='';$('bars').innerHTML='';return;}
+  const [pv,load,imp,exp,chg,dis]=P.tot;
+  const msgs=[], dfmt=x=>new Date(x).toLocaleDateString('cs-CZ');
+  if(per==='all')msgs.push(P.yearly?'Celkové součty jsou počítadla měniče a elektroměru. Roční sloupce jsou ze SEMS (od '+new Date(STATS.since*1000).toLocaleDateString('cs-CZ')+'), spotřeba je dopočtená.':'Celkové hodnoty jsou celoživotní počítadla měniče a elektroměru. Sloupce níže se plní od '+new Date(STATS.since*1000).toLocaleDateString('cs-CZ')+'.');
+  else if(P.days<P.want)msgs.push((P.first?'Data mám od '+dfmt(P.first)+'. ':'')+'K dispozici je zatím '+P.days+' z '+P.want+' dní, součty proto zahrnují jen tuto dobu.');
+  const O=STATS.outage, hasEst=P.bars.some(b=>b.e>0);
+  if(O&&(P.estDays>0||(per==='all'&&hasEst)))msgs.push('Šrafované sloupce jsou ODHAD za výpadek dat ve SEMS ('+dfmt(O.from)+' až '+dfmt(O.to)+'): chybějící energie se dopočítala z rozdílu počítadel měniče a sezónního průběhu z minulých let. Výroba za výpadek ≈ '+fmtK(O.gap[0],0)+' kWh.');
+  if(msgs.length){note.style.display='block';note.textContent=msgs.join(' ');}else note.style.display='none';
+  const own=Math.max(0,load-imp), gridL=Math.min(imp,load);
+  const selfCons=pv>0?(pv-exp)/pv:null, selfSuff=load>0?own/load:null;
+  const k=(c,l,v,sub)=>`<div class="kpi"><div class="lab"><span class="sw" style="background:${css(c)}"></span>${l}</div><div class="val">${fmtK(v)}<small>kWh</small></div><div class="sub">${sub}</div></div>`;
+  $('kpis').innerHTML=
+    k('--s1','Vyrobeno',pv,'z toho '+pct(selfCons)+' využito doma'+(P.est&&P.est[0]>0?' · odhad '+fmtK(P.est[0],0)+' kWh':''))+
+    k('--s2','Spotřebováno doma',load,'z vlastní výroby a baterie '+pct(selfSuff))+
+    k('--s3','Prodáno do sítě',exp,pct(pv>0?exp/pv:null)+' výroby')+
+    k('--s5','Nakoupeno ze sítě',imp,pct(load>0?imp/load:null)+' spotřeby');
+  $('ratios').innerHTML=
+    `<div class="ratio"><h3>Soběstačnost</h3><div class="donutrow">${donut(selfSuff,'--s1',pct(selfSuff))}<p>Podíl spotřeby domu, který pokryla vlastní výroba (přímo nebo přes baterii).</p></div></div>
+     <div class="ratio"><h3>Vlastní spotřeba výroby</h3><div class="donutrow">${donut(selfCons,'--s2',pct(selfCons))}<p>Podíl vyrobené energie, který zůstal v domě a neodešel do sítě.</p></div></div>
+     <div class="ratio"><h3>Odkud je spotřeba</h3>${stack([{n:'Vlastní zdroj',v:own,c:'--s1'},{n:'Ze sítě',v:gridL,c:'--s5'}])}
+       <h3 style="margin-top:14px">Kam šla výroba</h3>${stack([{n:'Doma',v:Math.max(0,pv-exp),c:'--s2'},{n:'Prodáno',v:exp,c:'--s3'}])}
+       <div class="stackl" style="margin-top:10px"><span>Baterie: nabito <b>${fmtK(chg)} kWh</b></span><span>vybito <b>${fmtK(dis)} kWh</b></span></div></div>`;
+  $('barstitle').textContent=per==='7'||per==='30'?'Denní hodnoty (kWh)':(P.bars.length&&P.bars[0].l.length===4)?'Roční hodnoty (kWh)':'Měsíční hodnoty (kWh)';
+  const anyEst=P.bars.some(b=>b.e>=0.5);
+  $('chips').innerHTML=(anyEst?'<span class="hint" style="margin-right:10px">▨ odhad</span>':'')+SER.map((s,i)=>`<button class="chip ${vis.has(i)?'':'off'}" data-i="${i}"><i style="background:${css(s.c)}"></i>${s.n}</button>`).join('');
+  document.querySelectorAll('#chips .chip').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(vis.has(i)){if(vis.size>1)vis.delete(i);}else vis.add(i);drawStats();});
+  drawBars(P);drawTable2(P);
+}
+function drawBars(P){
+  const svg=$('bars'),W=svg.clientWidth||800,H=320,m={l:52,r:10,t:12,b:28},bars=P.bars,show=SER.map((s,i)=>i).filter(i=>vis.has(i));
+  if(!bars.length){svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">Historie se teprve sbírá. Sloupce se objeví po prvním celém dni.</text>`;return;}
+  let hi=1;bars.forEach(b=>show.forEach(i=>hi=Math.max(hi,b.v[SER[i].k])));
+  const raw=hi/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),step=[1,2,2.5,5,10].map(x=>x*mag).find(x=>x>=raw);
+  hi=Math.ceil(hi/step)*step;
+  const Y=v=>m.t+(1-v/hi)*(H-m.t-m.b),gw=(W-m.l-m.r)/bars.length,bw=Math.min(26,gw*0.8/show.length);
+  let o='<defs>'+SER.map((x,i)=>`<pattern id="hs${i}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="${css(x.c)}" fill-opacity=".18"/><rect width="3" height="7" fill="${css(x.c)}" fill-opacity=".75"/></pattern>`).join('')+'</defs>';
+  for(let v=0;v<=hi+1e-9;v+=step)o+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css(v===0?'--line':'--grid')}" stroke-width="${v===0?1.5:1}"/><text x="${m.l-8}" y="${Y(v)+4}" text-anchor="end">${fmtK(v,step<1?1:0)}</text>`;
+  const every=Math.max(1,Math.ceil(bars.length*46/(W-m.l-m.r)));
+  bars.forEach((b,gi)=>{
+    const cx=m.l+gi*gw+gw/2,x0=cx-bw*show.length/2;
+    show.forEach((si,j)=>{
+      const v=b.v[SER[si].k],y=Y(v),h=(H-m.b)-y,x=x0+j*bw+1,w=bw-2,r=Math.min(4,h/2,w/2);
+      if(h<=0.5)return;
+      o+=`<path d="M${x} ${H-m.b}V${y+r}a${r} ${r} 0 0 1 ${r} ${-r}h${w-2*r}a${r} ${r} 0 0 1 ${r} ${r}V${H-m.b}Z" fill="${b.e>=0.5?`url(#hs${si})`:css(SER[si].c)}"${b.e>=0.5?` stroke="${css(SER[si].c)}" stroke-width="1.2" stroke-dasharray="3 2"`:''}/>`;
+    });
+    if(gi%every===0)o+=`<text x="${cx}" y="${H-8}" text-anchor="middle">${lab(b.l)}</text>`;
+    o+=`<rect class="hit" data-i="${gi}" x="${m.l+gi*gw}" y="${m.t}" width="${gw}" height="${H-m.t-m.b}" fill="transparent"/>`;
+  });
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=o;svg._s={W,gw,m,bars};
+}
+$('bars').addEventListener('mousemove',e=>{
+  const t=e.target.closest?e.target:null;if(!t||!t.classList.contains('hit'))return;
+  const s=$('bars')._s,b=s.bars[+t.dataset.i],tip=$('btip');
+  tip.innerHTML=`<b>${labFull(b.l)}</b>`+SER.map(x=>`<div><span><i style="background:${css(x.c)}"></i>${x.n}</span><span>${fmtK(b.v[x.k])} kWh</span></div>`).join('')+(b.e>0?`<div style="margin-top:4px;color:var(--ink2)"><span>▨ odhad</span><span>${Math.round(b.e*100)} % období</span></div>`:'');
+  tip.style.display='block';const rect=$('bars').getBoundingClientRect(),px=(+t.dataset.i+.5)*s.gw+s.m.l,sc=rect.width/s.W;
+  const left=px*sc+14;tip.style.left=(left+210>rect.width?left-236:left)+'px';tip.style.top='10px';
+});
+$('bars').addEventListener('mouseleave',()=>{$('btip').style.display='none';});
+function drawTable2(P){
+  const rows=P.bars.slice().reverse();
+  $('tbl2').innerHTML='<table><thead><tr><th>Období</th><th>Výroba</th><th>Spotřeba</th><th>Prodej</th><th>Nákup</th><th>Nabito</th><th>Vybito</th></tr></thead><tbody>'+
+   rows.map(b=>`<tr${b.e>=0.5?' style="font-style:italic;color:var(--ink2)"':''}><td>${labFull(b.l)}${b.e>0?' ~odhad':''}</td><td>${fmtK(b.v[0])}</td><td>${fmtK(b.v[1])}</td><td>${fmtK(b.v[3])}</td><td>${fmtK(b.v[2])}</td><td>${fmtK(b.v[4])}</td><td>${fmtK(b.v[5])}</td></tr>`).join('')+'</tbody></table>';
+}
+document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
+$('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
 
 /* ---------- spotové ceny ---------- */
 let PR=null, prDay=null;
@@ -381,7 +475,89 @@ async function tickPrices(){
   drawPrices();
 }
 
+/* ---------- ovládání měniče ---------- */
+let PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
+const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
+const MODE_LBL={GENERAL:'Základní',ECO:'Eco',SELF_USE:'Vlastní spotřeba',PEAK_SHAVING:'Ořezání špiček',BACKUP:'Záloha',OFF_GRID:'Ostrovní'};
+function priceTxt(){
+  if(!PR||!PR.days||!PR.days[PR.today]||PR.kurz==null)return '';
+  const e=PR.days[PR.today][new Date().getHours()];
+  return e==null?'':' Cena elektřiny teď: '+fmtK(e/1000*PR.kurz+(PR.marze||0),2)+' Kč/kWh.';
+}
+function ask(text,action,params){if(confirm(text))ctlPost(action,params);}
+function drawCtl(){
+  const el=$('ctlbody'),st=$('ctlstate');
+  if(CTLEN===null){return;}
+  if(!CTLEN){st.textContent='vypnuto';
+    el.innerHTML='<p class="hint">Ovládání je vypnuté, protože není nastavený přístupový kód. V PowerShellu spusťte <code>setx GW_PIN "váš-kód"</code> (aspoň 6 znaků) a dashboard znovu spusťte.</p>';return;}
+  if(!CTL){st.textContent='nedostupné';
+    el.innerHTML='<p class="hint">Měnič teď neodpovídá'+(CTLERR?' ('+CTLERR+')':'')+'.</p><button class="btn" id="cretry">Zkusit znovu</button>';
+    $('cretry').onclick=ctlLoad;return;}
+  if(!UNLOCKED){st.textContent='zamčeno';
+    el.innerHTML='<input class="pin" id="pin" type="password" autocomplete="off" placeholder="Přístupový kód"><button class="btn go" id="unlock">Odemknout</button><p class="cmsg" id="ctlmsg">'+ctlMsg+'</p>';
+    const go=()=>{PIN=$('pin').value;if(PIN)ctlPost('overit');};
+    $('unlock').onclick=go;$('pin').onkeydown=e=>{if(e.key==='Enter')go();};return;}
+  st.textContent='odemčeno';
+  const S=CTL,soc=NOW?Math.round(NOW.soc):null,P=S.puvodne||{};
+  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??80, cp=cv.cp??100;
+  const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">Vrátit na původní (${txt(P[g])})</button>`:'';
+  let h=`<div class="cgrp" style="border-top:0;padding-top:0"><h3>Režim</h3><div class="chips">`+
+    ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}">${MODE_LBL[m]}</button>`).join('')+
+    `</div>`+(S.work_mode==='OFF_GRID'?'<p class="hint">Měnič je v ostrovním režimu, ten odsud nejde měnit.</p>':'')+back('mode',x=>MODE_LBL[x]||x)+`</div>`;
+  h+=`<div class="cgrp"><h3>Nabít baterii teď</h3>`+
+    (S.charge?`<div class="chargenote">Probíhá nabíjení do ${S.charge.target} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
+    `<div class="hint">Baterie teď: ${soc==null?'–':soc+' %'}. Nabíjí se i ze sítě.</div>
+    <label>Cílový stav <b id="cs_v">${cs} %</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
+    <label>Výkon nabíjení <b id="cp_v">${cp} %</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
+    <button class="btn go" id="cgo">Nabíjet</button>`)+`</div>`;
+  h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: ${S.min_soc} %.</div>
+    <label>Nejnižší stav <b id="ms_v">${ms} %</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
+    <button class="btn go" id="mgo">Nastavit</button>${back('min_soc',x=>x+' %')}</div>`;
+  h+=`<div class="cgrp"><h3>Limit prodeje do sítě</h3><div class="hint">Teď: ${fmtK(S.export_limit,0)} W. Nula znamená neprodávat.</div>
+    <label>Limit <b id="ex_v">${fmtK(ex,0)} W</b></label><input type="range" id="ex" min="0" max="10000" step="100" value="${ex}">
+    <button class="btn go" id="ego">Nastavit</button>${back('export',x=>fmtK(x,0)+' W')}</div>`;
+  if(Object.keys(P).length>1)h+=`<div class="cgrp"><button class="btn" id="call">Vrátit vše na původní</button></div>`;
+  h+=`<div class="cgrp"><h3>Upozornění na tento telefon</h3><div class="hint" id="pushinfo">Zjišťuji…</div>
+    <button class="btn go" id="pon" style="display:none">Zapnout</button><button class="btn" id="ptest" style="display:none">Poslat zkoušku</button><button class="btn" id="poff" style="display:none">Vypnout</button></div>`;
+  h+=`<p class="cmsg" id="ctlmsg">${ctlMsg}</p>`;
+  el.innerHTML=h;
+  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask('Přepnout režim měniče na „'+MODE_LBL[m]+'“?','mode',{mode:m});});
+  el.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>ask('Vrátit toto nastavení na původní hodnotu?','revert',{group:b.dataset.back}));
+  [['cs','%'],['cp','%'],['ms','%'],['ex','W']].forEach(([id,u])=>{const r=$(id);if(!r)return;
+    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=(id==='ex'?fmtK(r.value,0):r.value)+' '+u;};});
+  if($('cgo'))$('cgo').onclick=()=>ask('Nabíjet baterii na '+$('cs').value+' % výkonem '+$('cp').value+' %? Nabíjí se i ze sítě.'+priceTxt()+' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).','charge',{target:+$('cs').value,power:+$('cp').value});
+  if($('cstop'))$('cstop').onclick=()=>ask('Zrušit nabíjení a vrátit režim, jaký byl před ním?','revert',{group:'charge'});
+  $('mgo').onclick=()=>ask('Nejnižší stav baterie při vybíjení nastavit na '+$('ms').value+' %?','min_soc',{value:+$('ms').value});
+  $('ego').onclick=()=>ask('Limit prodeje do sítě nastavit na '+fmtK($('ex').value,0)+' W?','export',{value:+$('ex').value});
+  if($('call'))$('call').onclick=()=>ask('Vrátit všechna změněná nastavení na původní hodnoty?','revert',{group:'all'});
+  $('pon').onclick=pushOn;$('poff').onclick=pushOff;$('ptest').onclick=pushTest;
+  pushState();
+}
 
+/* ---------- ukázka ovládání: běží jen v prohlížeči návštěvníka, na server se NIC neodesílá ---------- */
+CTLEN=true;UNLOCKED=true;
+CTL={work_mode:'ECO',min_soc:15,export_limit:4000,puvodne:{},charge:null};
+async function ctlLoad(){drawCtl();}
+async function ctlPost(action,p){
+  p=p||{};const P=CTL.puvodne;
+  const back=g=>{if(g==='charge')CTL.charge=null;
+    else if(g==='mode'&&P.mode!=null){CTL.work_mode=P.mode;delete P.mode;}
+    else if(g==='min_soc'&&P.min_soc!=null){CTL.min_soc=P.min_soc;delete P.min_soc;}
+    else if(g==='export'&&P.export!=null){CTL.export_limit=P.export;delete P.export;}};
+  if(action==='mode'){if(P.mode==null)P.mode=CTL.work_mode;CTL.work_mode=p.mode;CTL.charge=null;}
+  else if(action==='charge'){CTL.charge={target:p.target,power:p.power};}
+  else if(action==='min_soc'){if(P.min_soc==null)P.min_soc=CTL.min_soc;CTL.min_soc=p.value;}
+  else if(action==='export'){if(P.export==null)P.export=CTL.export_limit;CTL.export_limit=p.value;}
+  else if(action==='revert'){if(p.group==='all'){['charge','mode','min_soc','export'].forEach(back);}else back(p.group);}
+  ctlMsg='Ukázka: nic se neodeslalo a v elektrárně se nic nezměnilo.';
+  drawCtl();
+}
+var _drawCtl=drawCtl;
+drawCtl=function(){_drawCtl();const b=$('ctlbody');
+  if(b){b.insertAdjacentHTML('afterbegin','<div class="chargenote" style="margin:0 0 12px">Ukázka ovládání. Tlačítka vypadají jako skutečná, ale pracují jen v tomto okně prohlížeče. Nic se neodesílá a elektrárna se nemění.</div>');
+    $('ctlstate').textContent='ukázka';}};
+function pushState(){if($('pushinfo'))$('pushinfo').textContent='V ukázce se upozornění nezapínají.';}
+function pushOn(){}function pushOff(){}function pushTest(){}
 /* ---------- smyčka ---------- */
 function render(){
   drawFlow();drawToday();
@@ -398,7 +574,10 @@ async function tick(){
   catch(e){ERR='dashboard neběží (zkontroluj okno s příkazovou řádkou)';}
   render();
 }
-
+async function tickStats(){
+  try{STATS=await (await fetch('/api/snapshot?co=stats')).json();}catch(e){}
+  drawStats();
+}
 function themePref(){try{return localStorage.getItem('theme')||'dark';}catch(e){return 'dark';}}
 const mqLight=matchMedia('(prefers-color-scheme: light)');
 function applyTheme(redraw){
@@ -412,6 +591,6 @@ document.querySelectorAll('#themeseg button').forEach(b=>b.onclick=()=>{try{loca
 (mqLight.addEventListener?mqLight.addEventListener.bind(mqLight,'change'):mqLight.addListener.bind(mqLight))(()=>{if(themePref()==='auto')applyTheme(true);});
 applyTheme(false);
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
-tick();tickPrices();setInterval(tick,15000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
+tick();tickStats();tickPrices();ctlLoad();setInterval(tick,15000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 
 </script></body></html>

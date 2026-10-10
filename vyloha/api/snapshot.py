@@ -4,6 +4,7 @@ Veřejná výloha: funkce pro Vercel (Python).
   POST /api/snapshot              domácí PC pošle aktuální data (vyžaduje tajný klíč PUSH_TOKEN)
   GET  /api/snapshot              vrátí poslední data a historii pro graf (to čte stránka)
   GET  /api/snapshot?co=ceny      vrátí spotové ceny
+  GET  /api/snapshot?co=stats     vrátí analýzu energie (týden, měsíc, rok)
 
 Data jsou v Redisu (Upstash, přidává se k projektu ve Vercelu). Nic jiného se neukládá.
 Proměnné prostředí: PUSH_TOKEN, KV_REST_API_URL + KV_REST_API_TOKEN (nebo UPSTASH_REDIS_REST_URL/TOKEN),
@@ -20,7 +21,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 HIST_MAX = 1440      # 24 h po minutě
-MAX_BODY = 20000
+MAX_BODY = 100000
 
 FIELDS = {"pv": (0, 100000), "load": (0, 100000), "grid": (-100000, 100000), "bat": (-100000, 100000),
           "soc": (0, 100), "e_day": (0, 5000), "e_load_day": (0, 5000), "bat_ch_day": (0, 5000), "bat_dis_day": (0, 5000)}
@@ -95,11 +96,53 @@ def clean_prices(d):
             "err": str(err)[:200] if err else None, "ts": _f(d.get("ts"), 0, 4e9, "ts")}
 
 
+def _plain(v, depth=0):
+    """Analýza smí obsahovat jen čísla, krátké texty, seznamy a objekty."""
+    if depth > 6:
+        raise ValueError("stats: moc hluboké")
+    if v is None or isinstance(v, (bool, int)):
+        return
+    if isinstance(v, float):
+        if not math.isfinite(v):
+            raise ValueError("stats: neplatné číslo")
+        return
+    if isinstance(v, str):
+        if len(v) > 40:
+            raise ValueError("stats: dlouhý text")
+        return
+    if isinstance(v, list):
+        if len(v) > 500:
+            raise ValueError("stats: dlouhý seznam")
+        for x in v:
+            _plain(x, depth + 1)
+        return
+    if isinstance(v, dict):
+        if len(v) > 50:
+            raise ValueError("stats: moc klíčů")
+        for k, x in v.items():
+            if not isinstance(k, str) or len(k) > 30:
+                raise ValueError("stats: klíč")
+            _plain(x, depth + 1)
+        return
+    raise ValueError("stats: nepovolený typ")
+
+
+def clean_stats(d):
+    if not (isinstance(d, dict) and isinstance(d.get("periods"), dict)):
+        raise ValueError("stats: očekává se objekt s periods")
+    _plain(d)
+    if len(json.dumps(d)) > 80000:
+        raise ValueError("stats: moc velké")
+    return d
+
+
 def store(body, now=None):
     """Přijme data z domácího PC a uloží je. Vrací seznam příkazů pro Redis."""
     cmds = [["SET", "solar:now", json.dumps(clean_now(body.get("now"), now))]]
     if body.get("ceny") is not None:
         cmds.append(["SET", "solar:ceny", json.dumps(clean_prices(body["ceny"]))])
+    if body.get("stats") is not None:
+        cmds.append(["SET", "solar:stats", json.dumps(clean_stats(body["stats"]))])
     if body.get("point") is not None:
         cmds.append(["LPUSH", "solar:hist", json.dumps(clean_point(body["point"]))])
         cmds.append(["LTRIM", "solar:hist", "0", str(HIST_MAX - 1)])
@@ -122,6 +165,10 @@ class handler(BaseHTTPRequestHandler):
             return self._send(200, {"now": None, "hist": [], "err": "Stránka je dočasně vypnutá."} if co != "ceny"
                               else {"today": None, "days": {}, "kurz": None, "marze": 0, "err": "vypnuto", "ts": None})
         try:
+            if co == "stats":
+                (r,) = redis([["GET", "solar:stats"]])
+                return self._send(200, json.loads(r) if r else {"periods": {}, "since": None, "outage": None},
+                                  "public, s-maxage=60, stale-while-revalidate=300")
             if co == "ceny":
                 (r,) = redis([["GET", "solar:ceny"]])
                 return self._send(200, json.loads(r) if r else {"today": None, "days": {}, "kurz": None, "marze": 0,

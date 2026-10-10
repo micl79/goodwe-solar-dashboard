@@ -6,7 +6,7 @@ Odesílání živých dat na veřejnou stránku (Vercel). Vypnuto, dokud nejsou 
   GW_VEREJNE_INTERVAL  sekund mezi odesláními (výchozí 30)
   GW_VEREJNE_ZPOZDENI  zpoždění zveřejněných dat v sekundách (výchozí 0 = živě; třeba 3600 = hodinu zpátky)
 
-Odesílá se jen: výkony, stav baterie, denní energie a spotové ceny. Žádná IP adresa, ovládání ani osobní soubory.
+Odesílá se jen: výkony, stav baterie, denní energie, spotové ceny a analýza energie (součty po dnech a měsících). Žádná IP adresa, ovládání ani osobní soubory.
 """
 import collections
 import json
@@ -20,11 +20,12 @@ TOKEN = os.environ.get("GW_VEREJNE_TOKEN", "").strip()
 EVERY = max(10.0, float(os.environ.get("GW_VEREJNE_INTERVAL", "30")))
 DELAY = max(0.0, min(float(os.environ.get("GW_VEREJNE_ZPOZDENI", "0")), 20 * 3600))
 POINT_EVERY = 60.0     # do grafu na stránce se přidává jeden bod za minutu
+STATS_EVERY = 300.0    # analýza energie (týden, měsíc, rok) se posílá jednou za 5 minut
 KEYS = ("ts", "model", "pv", "load", "grid", "bat", "soc", "e_day", "e_load_day", "bat_ch_day", "bat_dis_day")
 
 _buf = collections.deque()
 _lock = threading.Lock()
-_st = {"ok": None, "last_point": 0.0}
+_st = {"ok": None, "last_point": 0.0, "last_stats": 0.0}
 
 
 def enabled():
@@ -51,13 +52,15 @@ def _pick(now_t=None):
         return ok[-1] if ok else None
 
 
-def payload(get_prices, now_t=None):
+def payload(get_prices, get_stats=None, now_t=None):
     snap = _pick(now_t)
     if snap is None:
         return None
     out = {"now": snap, "ceny": get_prices()}
     if snap["ts"] - _st["last_point"] >= POINT_EVERY - 5:
         out["point"] = [snap["ts"], snap["pv"], snap["load"], snap["grid"], snap["bat"], snap["soc"]]
+    if get_stats and time.time() - _st["last_stats"] >= STATS_EVERY:
+        out["stats"] = get_stats()
     return out
 
 
@@ -68,14 +71,16 @@ def _post(body):
         return r.status
 
 
-def _loop(get_prices):
+def _loop(get_prices, get_stats):
     while True:
         try:
-            body = payload(get_prices)
+            body = payload(get_prices, get_stats)
             if body:
                 _post(body)
                 if "point" in body:
                     _st["last_point"] = body["point"][0]
+                if "stats" in body:
+                    _st["last_stats"] = time.time()
                 if _st["ok"] is not True:
                     print("Veřejná stránka: odesílání dat funguje.", flush=True)
                 _st["ok"] = True
@@ -86,11 +91,11 @@ def _loop(get_prices):
         time.sleep(EVERY)
 
 
-def start(get_prices):
+def start(get_prices, get_stats=None):
     """Spustí odesílání na pozadí. Vrací text pro výpis při startu."""
     if not (URL or TOKEN):
         return "vypnuta (nenastaveno GW_VEREJNE_URL a GW_VEREJNE_TOKEN)"
     if not enabled():
         return "vypnuta (adresa musí začínat https:// a musí být nastaven klíč GW_VEREJNE_TOKEN)"
-    threading.Thread(target=_loop, args=(get_prices,), daemon=True).start()
+    threading.Thread(target=_loop, args=(get_prices, get_stats), daemon=True).start()
     return f"zapnuta, každých {int(EVERY)} s" + (f", zpoždění {int(DELAY)} s" if DELAY else ", živě")

@@ -1,6 +1,7 @@
 # Veřejná výloha (jen pro čtení)
 
-Stránka, kterou lze sdílet s kamarády. Ukazuje živá data z elektrárny, spotové ceny a graf. **Nemá žádné ovládání.**
+Stránka, kterou lze sdílet s kamarády. Ukazuje živá data z elektrárny, spotové ceny, graf a analýzu energie (týden, měsíc, rok).
+Sloupec **Ovládání** je jen ukázka: tlačítka pracují v prohlížeči návštěvníka a **nic se z nich neodesílá**. Skutečné ovládání na stránce není.
 
 Jak to funguje: domácí PC (dashboard, `verejne.py`) posílá každých 30 s vybraná čísla na Vercel (`api/snapshot.py`),
 ten je uloží do Redisu a stránka (`public/index.html`) si je odtud čte. K měniči ani k domácí síti se nikdo nepřipojuje.
@@ -23,4 +24,5 @@ Po změně vzhledu dashboardu: `python sestav_vyloha.py` (z kořene projektu), p
 ## Soukromí a vypínače
 - Zpoždění dat: `setx GW_VEREJNE_ZPOZDENI "3600"` (sekundy, výchozí 0 = živě). Stránka pak ukáže, že data jsou stará.
 - Okamžité vypnutí: ve Vercelu proměnná `PUBLIC_OFF=1` (stránka přestane ukazovat data) nebo na PC smazat `GW_VEREJNE_*`.
-- Odesílají se jen výkony, stav baterie, denní energie a ceny. Nikdy IP adresa, ovládání ani osobní soubory.
+- Odesílají se jen výkony, stav baterie, denní energie, ceny a analýza energie (součty po dnech a měsících, jednou za 5 minut). Nikdy IP adresa, ovládání ani osobní soubory.
+- Stránka umí jen číst (GET). `sestav_vyloha.py` při sestavení selže, kdyby na ní zůstal odesílací kód (`method:'POST'`) nebo skutečné adresy ovládání.

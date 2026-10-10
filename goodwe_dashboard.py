@@ -617,7 +617,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <span class="seg themeseg" id="themeseg" aria-label="Vzhled"><button data-t="dark">Tmavý</button><button data-t="light">Světlý</button><button data-t="auto">Auto</button></span>
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
-  <nav><a href="#live">Živě</a><!--PUBLIC-STRIP-START--><a href="#ctl">Ovládání</a><!--PUBLIC-STRIP-END--><a href="#prices">Ceny</a><!--PUBLIC-STRIP-START--><a href="#analysis">Analýza</a><!--PUBLIC-STRIP-END--></nav>
+  <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
  </div>
 </header>
 
@@ -649,7 +649,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="tblbox" id="tbl"><table><thead><tr><th>Čas</th><th>FVE</th><th>Dům</th><th>Síť</th><th>Baterie</th><th>SOC</th></tr></thead><tbody id="tbody"></tbody></table></div>
 </section>
 
-<!--PUBLIC-STRIP-START--><section id="analysis" class="card">
+<section id="analysis" class="card">
  <div class="bar"><h2>Analýza energie</h2>
   <span class="seg" id="per"><button data-p="7">Týden</button><button data-p="30" class="on">Měsíc</button><button data-p="365">Rok</button><button data-p="all">Celkem</button></span></div>
  <div class="note" id="note"></div>
@@ -660,12 +660,12 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="cbox"><svg class="chart" id="bars"></svg><div class="tip" id="btip"></div></div>
  <div class="tblbox" id="tbl2"></div>
  <p class="hint" style="margin:10px 0 0">Prodej a nákup jsou z elektroměru. „Vlastní spotřeba“ = výroba, která nešla do sítě. „Soběstačnost“ = podíl spotřeby, který nebyl nakoupen. Nabíjení baterie ze sítě se počítá do nákupu, hodnoty jsou proto orientační.</p>
-</section><!--PUBLIC-STRIP-END-->
+</section>
 </main>
-<!--PUBLIC-STRIP-START--><aside class="ctrl"><section id="ctl" class="card">
+<aside class="ctrl"><section id="ctl" class="card">
  <div class="bar"><h2>Ovládání</h2><span class="hint" id="ctlstate"></span></div>
  <div id="ctlbody"><p class="hint">Načítám…</p></div>
-</section></aside><!--PUBLIC-STRIP-END-->
+</section></aside>
 </div>
 </div>
 
@@ -801,7 +801,6 @@ function drawTable(){
   $('tbody').innerHTML=rows.map(r=>`<tr><td>${hhmmss(r[0])}</td><td>${fmtW(r[1])}</td><td>${fmtW(r[2])}</td><td>${fmtW(r[3])}</td><td>${fmtW(r[4])}</td><td>${r[5].toFixed(0)} %</td></tr>`).join('');
 }
 
-/*PUBLIC-STRIP-START*/
 /* ---------- analýza ---------- */
 const SER=[{k:0,n:'Výroba',c:'--s1'},{k:1,n:'Spotřeba',c:'--s2'},{k:3,n:'Prodej do sítě',c:'--s3'},{k:2,n:'Nákup ze sítě',c:'--s5'}];
 function donut(frac,color,label){
@@ -885,7 +884,6 @@ function drawTable2(P){
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
 $('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
 
-/*PUBLIC-STRIP-END*/
 /* ---------- spotové ceny ---------- */
 let PR=null, prDay=null;
 const hh=h=>String(h).padStart(2,'0');
@@ -927,7 +925,6 @@ async function tickPrices(){
   drawPrices();
 }
 
-/*PUBLIC-STRIP-START*/
 /* ---------- ovládání měniče ---------- */
 let PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
 const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
@@ -937,7 +934,7 @@ function priceTxt(){
   const e=PR.days[PR.today][new Date().getHours()];
   return e==null?'':' Cena elektřiny teď: '+fmtK(e/1000*PR.kurz+(PR.marze||0),2)+' Kč/kWh.';
 }
-async function ctlLoad(){
+/*PUBLIC-STRIP-START*/async function ctlLoad(){
   ctlMsg='';
   try{const j=await (await fetch('/api/ovladani')).json();CTLEN=j.enabled;CTL=j.status;CTLERR=j.err;}
   catch(e){CTLERR='dashboard neodpovídá';}
@@ -955,7 +952,7 @@ async function ctlPost(action,params){
   }catch(e){ctlMsg='Nepovedlo se: '+e.message;}
   ctlBusy=false;drawCtl();
 }
-function ask(text,action,params){if(confirm(text))ctlPost(action,params);}
+/*PUBLIC-STRIP-END*/function ask(text,action,params){if(confirm(text))ctlPost(action,params);}
 function drawCtl(){
   const el=$('ctlbody'),st=$('ctlstate');
   if(CTLEN===null){return;}
@@ -1004,6 +1001,7 @@ function drawCtl(){
   $('pon').onclick=pushOn;$('poff').onclick=pushOff;$('ptest').onclick=pushTest;
   pushState();
 }
+/*PUBLIC-STRIP-START*/
 /* ---------- upozornění na telefon ---------- */
 const u8=b=>Uint8Array.from(atob((b+'='.repeat((4-b.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 const say=t=>{ctlMsg=t;if($('ctlmsg'))$('ctlmsg').textContent=t;};
@@ -1074,10 +1072,10 @@ async function tick(){
   catch(e){ERR='dashboard neběží (zkontroluj okno s příkazovou řádkou)';}
   render();
 }
-/*PUBLIC-STRIP-START*/async function tickStats(){
+async function tickStats(){
   try{STATS=await (await fetch('/api/stats')).json();}catch(e){}
   drawStats();
-}/*PUBLIC-STRIP-END*/
+}
 function themePref(){try{return localStorage.getItem('theme')||'dark';}catch(e){return 'dark';}}
 const mqLight=matchMedia('(prefers-color-scheme: light)');
 function applyTheme(redraw){
@@ -1091,7 +1089,7 @@ document.querySelectorAll('#themeseg button').forEach(b=>b.onclick=()=>{try{loca
 (mqLight.addEventListener?mqLight.addEventListener.bind(mqLight,'change'):mqLight.addListener.bind(mqLight))(()=>{if(themePref()==='auto')applyTheme(true);});
 applyTheme(false);
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
-tick();/*PUBLIC-STRIP-START*/tickStats();/*PUBLIC-STRIP-END*/tickPrices();/*PUBLIC-STRIP-START*/ctlLoad();/*PUBLIC-STRIP-END*/setInterval(tick,5000);/*PUBLIC-STRIP-START*/setInterval(tickStats,60000);/*PUBLIC-STRIP-END*/setInterval(tickPrices,300000);setInterval(drawPrices,60000);
+tick();tickStats();tickPrices();ctlLoad();setInterval(tick,5000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}
 </script></body></html>
 """
@@ -1303,7 +1301,7 @@ if __name__ == "__main__":
     print("Upozornění na telefon: " + ("zapnuta (přihlášených telefonů: %d)" % upozorneni.count() if push_ok else "vypnuta (chybí balíček pywebpush: pip install pywebpush)"))
     if not IP:
         print("POZOR: není nastavená proměnná GW_IP (IP adresa měniče). Bez ní se nic nenačte, viz README.")
-    print("Veřejná stránka: " + verejne.start(prices_payload))
+    print("Veřejná stránka: " + verejne.start(prices_payload, compute_stats))
     print("Ovládání měniče: " + ("ZAPNUTO (přístupový kód nastaven)" if ovladani.enabled() else "vypnuto (chybí proměnná GW_PIN)"))
     print(f"Dashboard běží: http://localhost:{PORT}   (ukončení: Ctrl+C)")
     if lan_ip:

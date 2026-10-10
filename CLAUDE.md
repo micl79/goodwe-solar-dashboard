@@ -38,7 +38,7 @@ Komunikace s uživatelem je česky.
 - Provoz: dashboard běží z projektové složky (data CSV jsou tady). Druhá instance se nespustí (`allow_reuse_address = False`).
 
 ## Veřejná výloha (`vyloha/`, `verejne.py`, `sestav_vyloha.py`)
-- Veřejná stránka je sestavená z HTML dashboardu: `sestav_vyloha.py` vyřízne bloky mezi značkami `PUBLIC-STRIP-START/END` (ovládání, analýza, upozornění) a přepíše adresy na `/api/snapshot`. Při přidání nového ovládacího kódu do dashboardu ho OBALIT těmito značkami, jinak by se dostal na veřejnou stránku (sestavení selže, když tam zůstane `/api/ovladani`, `/api/push`, `unlock` apod.).
+- Veřejná stránka je sestavená z HTML dashboardu: `sestav_vyloha.py` vyřízne bloky mezi značkami `PUBLIC-STRIP-START/END` (síťová část ovládání, upozornění na telefon) a přepíše adresy na `/api/snapshot`. Analýza energie na ní zůstává. Ovládání je na veřejné stránce jen ukázka v prohlížeči (`DEMO` v `sestav_vyloha.py`), nic neodesílá. Nový kód, který něco odesílá na server, OBALIT značkami, jinak sestavení selže (hlídá `method:'POST'`, `/api/ovladani`, `/api/push`).
 - Domácí PC data posílá (`verejne.py`, vypnuto bez proměnných `GW_VEREJNE_URL`/`GW_VEREJNE_TOKEN`), Vercel je ukládá do Redisu (`vyloha/api/snapshot.py`, Python). Zpoždění: `GW_VEREJNE_ZPOZDENI`. Návod k nasazení: `vyloha/README.md`.
 - Nasazení: Vercel (Root Directory `vyloha`, produkce po pushi do `main`) + Upstash Redis. Klíč `PUSH_TOKEN` je jen ve Vercelu a v proměnné `GW_VEREJNE_TOKEN` na PC, nikdy v souborech.
 - Veřejné ovládání NENÍ hotové a nedělá se bez přihlášení přes e-mail (Cloudflare Access): samotný šestimístný kód je na internet slabý. Ovládání zatím jen přes Tailscale.
