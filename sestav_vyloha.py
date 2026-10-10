@@ -47,7 +47,7 @@ def sestav(html):
     html = re.sub(r"/\*PUBLIC-STRIP-START\*/.*?/\*PUBLIC-STRIP-END\*/", "", html, flags=re.S)
     for a, b in [("fetch('/api/ceny')", "fetch('/api/snapshot?co=ceny')"),
                  ("fetch('/api/stats')", "fetch('/api/snapshot?co=stats')"),
-                 ("fetch('/api')", "fetch('/api/snapshot')"),
+                 ("fetch('/api')", "fetch('/api/snapshot'+(new URLSearchParams(location.search).get('demo')?'?demo=1':''))"),
                  ("setInterval(tick,5000)", "setInterval(tick,15000)"),
                  ("try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}", ""),
                  ("/* ---------- smyčka ---------- */", DEMO + "/* ---------- smyčka ---------- */")]:

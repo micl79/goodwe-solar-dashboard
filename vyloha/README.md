@@ -21,6 +21,14 @@ Po změně vzhledu dashboardu: `python sestav_vyloha.py` (z kořene projektu), p
    ```
    pak se odhlaste a přihlaste. Při startu dashboardu se vypíše „Veřejná stránka: zapnuta“.
 
+## Když je domácí PC vypnuté
+Funkce na Vercelu pozná, že data nechodí (starší než 10 minut), a **sama přepne na virtuální elektrárnu**: simulovaný
+průběh slunce, spotřeby domu, baterie a sítě (jiný v létě a v zimě, stejný pro všechny návštěvníky). Ve stavovém řádku
+je „simulovaná ukázka · virtuální data“. Burzovní ceny a kurz si funkce stáhne sama (veřejná data). Jakmile PC znovu
+pošle data, ukáže se zase skutečná elektrárna. Analýza energie zůstává z posledních odeslaných dat.
+- `?demo=1` na konci adresy vynutí virtuální data (na zkoušku).
+- `FORCE_DEMO=1` ve Vercelu: ukazuje se **vždy jen virtuální elektrárna**, žádná skutečná data z domu nejdou ven.
+
 ## Soukromí a vypínače
 - Zpoždění dat: `setx GW_VEREJNE_ZPOZDENI "3600"` (sekundy, výchozí 0 = živě). Stránka pak ukáže, že data jsou stará.
 - Okamžité vypnutí: ve Vercelu proměnná `PUBLIC_OFF=1` (stránka přestane ukazovat data) nebo na PC smazat `GW_VEREJNE_*`.

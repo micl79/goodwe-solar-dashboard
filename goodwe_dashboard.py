@@ -548,6 +548,7 @@ nav a{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--in
 nav a:hover{color:#15110a;background:var(--goldgrad);border-color:transparent}
 .status{font-size:12px;color:var(--ink2);display:flex;align-items:center;letter-spacing:.04em}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:8px}
+.dot.demo{background:var(--gold);box-shadow:0 0 10px var(--gold)}
 .dot.ok{background:var(--good);box-shadow:0 0 10px var(--good)}.dot.err{background:var(--bad);box-shadow:0 0 10px var(--bad)}
 
 .card{position:relative;background:var(--card-bg);border:1px solid rgba(214,179,112,.16);border-radius:22px;padding:22px 24px;margin-bottom:22px;
@@ -780,7 +781,7 @@ const EN={
 "Ukázka: nic se neodeslalo a v elektrárně se nic nezměnilo.":"Demo: nothing was sent and nothing changed in the power plant.",
 "V ukázce se upozornění nezapínají.":"Notifications are not turned on in the demo.",
 /* stavový řádek */
-"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}",
+"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}","simulovaná ukázka · virtuální data":"simulated demo · virtual data",
 /* zprávy ze serveru */
 "Chybný přístupový kód.":"Wrong access code.","Ovládání je vypnuté (není nastaven přístupový kód GW_PIN).":"Controls are disabled (the access code GW_PIN is not set).",
 "Příliš mnoho chybných pokusů. Zkuste to za {0} s.":"Too many wrong attempts. Try again in {0} s.","Neznámý režim":"Unknown mode","Neznámá akce":"Unknown action","Neznámá skupina":"Unknown group",
@@ -845,7 +846,7 @@ function applyLang(redraw){
   if(redraw){ctlMsg='';render();drawStats();drawPrices();if(typeof drawCtl==='function')drawCtl();}
 }
 const C=["--s1","--s2","--s3","--s4"], NAMES=["Výroba FVE","Spotřeba domu","Síť","Baterie"];
-let HIST=[], NOW=null, ERR=null, hours=6, hover=null, STATS=null, per='30';
+let DEMO=false, HIST=[], NOW=null, ERR=null, hours=6, hover=null, STATS=null, per='30';
 const vis=new Set([0,1]);
 
 const LOC=()=>LANG==='en'?'en-GB':'cs-CZ';
@@ -1257,7 +1258,8 @@ setInterval(()=>{const a=document.activeElement;if(!ctlBusy&&!(a&&(a.type==='ran
 function render(){
   drawFlow();drawToday();
   const d=$('dot'),s=$('status');
-  if(ERR){d.className='dot err';s.textContent=L('výpadek spojení s měničem: {0}',T(ERR));}
+  if(DEMO&&NOW){d.className='dot demo';s.textContent=L('simulovaná ukázka · virtuální data');}
+  else if(ERR){d.className='dot err';s.textContent=L('výpadek spojení s měničem: {0}',T(ERR));}
   else if(NOW){const age=Date.now()/1000-NOW.ts;
     if(age>180){d.className='dot err';s.textContent=L('data jsou stará {0} min (naposledy {1})',Math.round(age/60),hhmm(NOW.ts));}
     else{d.className='dot ok';s.textContent=L('živě · {0}',hhmmss(NOW.ts));}}
@@ -1265,7 +1267,7 @@ function render(){
   drawChart();drawTable();
 }
 async function tick(){
-  try{const j=await (await fetch('/api')).json();HIST=j.hist;NOW=j.now;ERR=j.err;}
+  try{const j=await (await fetch('/api')).json();HIST=j.hist;NOW=j.now;ERR=j.err;DEMO=!!j.demo;}
   catch(e){ERR='dashboard neběží (zkontroluj okno s příkazovou řádkou)';}
   render();
 }
