@@ -31,7 +31,7 @@ import ovladani
 import upozorneni
 import verejne
 
-IP = os.environ.get("GW_IP", "192.168.68.113")
+IP = os.environ.get("GW_IP", "")   # IP adresa měniče v domácí síti, povinná (README)
 PORT = int(os.environ.get("GW_PORT", "8080"))
 INTERVAL = float(os.environ.get("GW_INTERVAL", "5"))   # sekund mezi čteními
 COUNTER_EVERY = float(os.environ.get("GW_COUNTER_EVERY", "300"))  # sekund mezi uložením počítadel
@@ -201,6 +201,8 @@ async def poll():
     while True:
         try:
             if inv is None:
+                if not IP:
+                    raise RuntimeError("Není nastavená proměnná GW_IP (IP adresa měniče v domácí síti).")
                 inv = await goodwe.connect(IP)
             d = await inv.read_runtime_data()
             g = d.get
@@ -1299,6 +1301,8 @@ if __name__ == "__main__":
     except OSError:
         lan_ip = None
     print("Upozornění na telefon: " + ("zapnuta (přihlášených telefonů: %d)" % upozorneni.count() if push_ok else "vypnuta (chybí balíček pywebpush: pip install pywebpush)"))
+    if not IP:
+        print("POZOR: není nastavená proměnná GW_IP (IP adresa měniče). Bez ní se nic nenačte, viz README.")
     print("Veřejná stránka: " + verejne.start(prices_payload))
     print("Ovládání měniče: " + ("ZAPNUTO (přístupový kód nastaven)" if ovladani.enabled() else "vypnuto (chybí proměnná GW_PIN)"))
     print(f"Dashboard běží: http://localhost:{PORT}   (ukončení: Ctrl+C)")

@@ -20,16 +20,16 @@ bez cloudu. Jeden soubor, bez dalších závislostí kromě `goodwe`.
 pip install -r requirements.txt
 python goodwe_dashboard.py
 ```
-Otevři `http://localhost:8080`. IP měniče se nastavuje v proměnné `GW_IP` (výchozí `192.168.68.113`).
+Otevři `http://localhost:8080`. IP adresu měniče v domácí síti je nutné zadat v proměnné `GW_IP` (zjistíte ji v routeru nebo v aplikaci SEMS), např. v PowerShellu `setx GW_IP "192.168.1.100"` a znovu se přihlásit.
 Dvojklik na `solar.bat` spustí dashboard i prohlížeč.
 
-Proměnné prostředí: `GW_IP`, `GW_PORT` (8080), `GW_INTERVAL` (5 s), `GW_COUNTER_EVERY` (300 s).
+Proměnné prostředí: `GW_IP` (povinná), `GW_PORT` (8080), `GW_INTERVAL` (5 s), `GW_COUNTER_EVERY` (300 s).
 
 ## Ovládání a upozornění
 - Přístupový kód: v PowerShellu `setx GW_PIN "váš-kód"` (aspoň 6 znaků), pak se odhlaste a přihlaste. Bez kódu je ovládání vypnuté. Kód se nikam do souborů neukládá.
 - Změny se zapisují do `ovladani.log`, původní hodnoty do `ovladani_zaloha.json`. Ostrovní režim v kódu není.
 - Upozornění: `pip install pywebpush`, pak v dashboardu u Ovládání "Zapnout" (na iPhonu z ikony na ploše, přes https adresu).
-- Ceny: marže dodavatele se nastavuje proměnnou `GW_MARZE` (Kč/kWh), výchozí 0 odpovídá aplikaci Delta Green.
+- Ceny: marže dodavatele se nastavuje proměnnou `GW_MARZE` (Kč/kWh), výchozí 0 odpovídá čisté burzovní ceně, kterou ukazují i aplikace dodavatelů spotové elektřiny (ověřeno u jednoho českého dodavatele).
 
 ## Automatický start
 `solar_autostart.bat` se spouští při přihlášení do Windows ze složky Po spuštění (`shell:startup`, zástupce "Solarni dashboard"). Druhá kopie dashboardu se nespustí (port je obsazený).
@@ -53,3 +53,11 @@ powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $s=(
 
 ## Osobní data
 `goodwe_historie.csv`, `goodwe_pocitadla.csv`, `goodwe_sems.csv`, `ovladani*`, `push_*.json` jsou v `.gitignore`. Repozitář nech **privátní**.
+
+## Bezpečnost a odpovědnost
+- Neoficiální projekt, nesouvisí se společností GoodWe. **Použití na vlastní riziko, bez záruky.** Zápisy do měniče (ovládání) mohou ovlivnit jeho provoz a záruku výrobce.
+- Dashboard nemá přihlášení pro čtení. **Nikdy neotevírejte jeho port do internetu** (žádné přesměrování portu na routeru). Pro přístup zvenku použijte VPN (např. Tailscale).
+- Ovládání měniče je vypnuté, dokud nenastavíte přístupový kód `GW_PIN`. Kód ani klíče nepatří do souborů projektu ani do Gitu.
+- Veřejná výloha (`vyloha/`) ukazuje živá data z domu. Z přesných hodnot jde poznat, kdy nejste doma. Zvažte zpoždění (`GW_VEREJNE_ZPOZDENI`).
+- Ostrovní režim (OFF_GRID) v ovládání záměrně není.
+

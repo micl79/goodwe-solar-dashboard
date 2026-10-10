@@ -35,11 +35,11 @@ Komunikace s uživatelem je česky.
 - Web Push přes `pywebpush` (nepovinný balíček). Klíč VAPID se při prvním startu vytvoří v `push_klic.json`, přihlášené telefony jsou v `push_odberatele.json` (obojí v .gitignore, nikdy nenahrávat).
 - Přihlášení k upozornění vyžaduje stejný přístupový kód jako ovládání. Události: baterie plná (po poklesu pod 90 %), nabíjení skončilo, měnič 10 min nedostupný a znovu online.
 - Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Ověřeno na skutečném iPhonu 10. 10. 2026 (zkouška přišla).
-- Provoz: dashboard běží z projektové složky (data CSV jsou tady). Staré soubory z plochy jsou v `Desktop\solar_stare_soubory`. Druhá instance se nespustí (`allow_reuse_address = False`).
+- Provoz: dashboard běží z projektové složky (data CSV jsou tady). Druhá instance se nespustí (`allow_reuse_address = False`).
 
 ## Veřejná výloha (`vyloha/`, `verejne.py`, `sestav_vyloha.py`)
 - Veřejná stránka je sestavená z HTML dashboardu: `sestav_vyloha.py` vyřízne bloky mezi značkami `PUBLIC-STRIP-START/END` (ovládání, analýza, upozornění) a přepíše adresy na `/api/snapshot`. Při přidání nového ovládacího kódu do dashboardu ho OBALIT těmito značkami, jinak by se dostal na veřejnou stránku (sestavení selže, když tam zůstane `/api/ovladani`, `/api/push`, `unlock` apod.).
 - Domácí PC data posílá (`verejne.py`, vypnuto bez proměnných `GW_VEREJNE_URL`/`GW_VEREJNE_TOKEN`), Vercel je ukládá do Redisu (`vyloha/api/snapshot.py`, Python). Zpoždění: `GW_VEREJNE_ZPOZDENI`. Návod k nasazení: `vyloha/README.md`.
-- Nasazeno 10. 10. 2026: https://solar.blackbirds.cloud (Vercel projekt `goodwe-solar-dashboard-vyloha`, účet micl1, doména koupená u Vercelu, Upstash Redis `solar`, bezplatný). Produkce se nasazuje automaticky po pushi do `main` (Root Directory `vyloha`). Klíč `PUSH_TOKEN` je jen ve Vercelu a v proměnné `GW_VEREJNE_TOKEN` na PC, nikdy v souborech.
+- Nasazení: Vercel (Root Directory `vyloha`, produkce po pushi do `main`) + Upstash Redis. Klíč `PUSH_TOKEN` je jen ve Vercelu a v proměnné `GW_VEREJNE_TOKEN` na PC, nikdy v souborech.
 - Veřejné ovládání NENÍ hotové a nedělá se bez přihlášení přes e-mail (Cloudflare Access): samotný šestimístný kód je na internet slabý. Ovládání zatím jen přes Tailscale.
 
