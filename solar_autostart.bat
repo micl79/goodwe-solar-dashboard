@@ -1,0 +1,5 @@
+@echo off
+rem Spu?t?n? dashboardu p?i p?ihl??en? do Windows (bez otev?r?n? prohl??e?e)
+cd /d "%~dp0"
+python goodwe_dashboard.py
+pause

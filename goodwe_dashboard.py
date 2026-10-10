@@ -1125,7 +1125,16 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = False   # Windows jinak dovolí druhému dashboardu sdílet port a oba pak zapisují do stejných CSV
+
+
 if __name__ == "__main__":
+    try:
+        server = Server(("0.0.0.0", PORT), Handler)
+    except OSError:
+        print(f"Dashboard už běží (port {PORT} je obsazený). Druhá kopie se nespustí, aby se nezdvojovala data.")
+        raise SystemExit(1)
     load_history()
     ovladani.load_backup()
     sems_data = load_sems()
@@ -1151,6 +1160,6 @@ if __name__ == "__main__":
     if lan_ip:
         print(f"Z telefonu na stejné WiFi: http://{lan_ip}:{PORT}")
     try:
-        ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
         print("Konec.")
