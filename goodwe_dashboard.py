@@ -442,6 +442,7 @@ HTML = r"""<!doctype html>
 <html lang="cs"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#060709">
+<script>(function(){try{var p=localStorage.getItem('theme')||'auto';var l=p==='light'||(p==='auto'&&matchMedia('(prefers-color-scheme: light)').matches);document.documentElement.dataset.theme=l?'light':'dark';}catch(e){}})();</script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solár">
@@ -452,9 +453,28 @@ HTML = r"""<!doctype html>
 <title>Solární elektrárna</title>
 <style>
 :root{color-scheme:dark;
+--goldgrad:linear-gradient(135deg,#f0d9a6,#d6b370 55%,#9c7a3c);
+--card-bg:linear-gradient(155deg,#15171c 0%,#0c0d10 60%,#0a0b0e 100%);
+--card-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 60px -28px rgba(0,0,0,.85),0 0 0 1px rgba(0,0,0,.6);
+--tile:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.008));--tipbg:rgba(14,15,18,.94);--scroll:#2a2c31;
 --bg:#060709;--surface:#101216;--surface2:#0a0b0e;--ink:#f3efe6;--ink2:#b9b4a8;--muted:#7d796f;
 --grid:rgba(255,255,255,.07);--line:rgba(214,179,112,.28);--gold:#d6b370;--gold2:#f0d9a6;--gold3:#9c7a3c;
 --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--good:#58c98a;--bad:#f2837c}
+:root[data-theme="light"]{color-scheme:light;
+--bg:#f3efe6;--surface:#ffffff;--surface2:#f6f2e9;--ink:#1d1a14;--ink2:#4d473b;--muted:#7f796c;
+--grid:rgba(60,50,30,.1);--line:rgba(150,115,50,.38);--gold:#9a7424;--gold2:#6f5018;--gold3:#b8913f;
+--goldgrad:linear-gradient(135deg,#f0d9a6,#d6b370 55%,#b8913f);
+--card-bg:linear-gradient(155deg,#ffffff 0%,#fbf8f1 100%);
+--card-shadow:0 1px 0 rgba(255,255,255,.8) inset,0 18px 40px -26px rgba(80,60,20,.35),0 0 0 1px rgba(0,0,0,.03);
+--tile:linear-gradient(160deg,rgba(255,255,255,.9),rgba(250,246,238,.9));--tipbg:rgba(255,255,255,.97);--scroll:#cfc8b8;
+--s4:#b37400;--good:#1f8a4c;--bad:#c2453d}
+:root[data-theme="light"] .card{border-color:rgba(150,115,50,.22)}
+:root[data-theme="light"] .kpi,:root[data-theme="light"] .ratio,:root[data-theme="light"] .today,:root[data-theme="light"] .prsum,:root[data-theme="light"] .cgrp{border-color:rgba(150,115,50,.2)}
+:root[data-theme="light"] .seg button:not(.on),:root[data-theme="light"] .btn:not(.go),:root[data-theme="light"] .chip:not(.on){background:rgba(255,255,255,.7)}
+:root[data-theme="light"] .pin{background:#fff}
+:root[data-theme="light"] .tip{box-shadow:0 14px 30px rgba(60,45,15,.18)}
+:root[data-theme="light"] body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#1d1a14;z-index:50}
+.themeseg{display:inline-flex}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;color:var(--ink);font:15px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;font-weight:400;-webkit-font-smoothing:antialiased;
@@ -467,7 +487,7 @@ background:
 .layout{display:grid;grid-template-columns:300px minmax(0,1fr) 340px;grid-template-areas:"side main ctrl";gap:22px;align-items:start}
 .layout>main{grid-area:main;min-width:0}
 .side{grid-area:side}.ctrl{grid-area:ctrl}
-.chip.on{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold3));color:#15110a;border-color:transparent;font-weight:600}
+.chip.on{background:var(--goldgrad);color:#15110a;border-color:transparent;font-weight:600}
 .cgrp{padding:14px 0 6px;border-top:1px solid rgba(214,179,112,.14)}
 .cgrp h3{font:400 10.5px/1.2 "Segoe UI",system-ui,sans-serif;margin:0 0 10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
 .cgrp label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-top:6px}
@@ -475,7 +495,7 @@ background:
 .cgrp input[type=range]{width:100%;accent-color:var(--gold);margin:4px 0}
 .cgrp .btn{margin:8px 8px 0 0}
 .cgrp .chips{display:flex;flex-wrap:wrap}
-.btn.go{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold3));color:#15110a;border-color:transparent;font-weight:600}
+.btn.go{background:var(--goldgrad);color:#15110a;border-color:transparent;font-weight:600}
 .cmsg{min-height:18px;font-size:12px;margin:10px 0 0;color:var(--ink2)}
 .pin{width:100%;font:inherit;padding:9px 14px;margin-bottom:8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink)}
 .chargenote{font-size:12px;color:var(--gold2);background:rgba(214,179,112,.08);border:1px solid rgba(214,179,112,.2);border-radius:12px;padding:8px 12px;margin:8px 0 0}
@@ -495,13 +515,13 @@ h1{font:400 13px/1 "Segoe UI",system-ui,sans-serif;margin:0;letter-spacing:.42em
 h1::after{content:"";display:block;width:54px;height:1px;margin-top:12px;background:linear-gradient(90deg,var(--gold),transparent)}
 h1 small{display:block;margin:10px 0 0;font:300 30px/1.1 Georgia,"Times New Roman",serif;letter-spacing:.01em;text-transform:none;color:var(--ink)}
 nav a{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink2);text-decoration:none;border:1px solid var(--line);padding:7px 16px;border-radius:999px;margin-left:8px;transition:.2s}
-nav a:hover{color:#15110a;background:linear-gradient(135deg,var(--gold2),var(--gold));border-color:transparent}
+nav a:hover{color:#15110a;background:var(--goldgrad);border-color:transparent}
 .status{font-size:12px;color:var(--ink2);display:flex;align-items:center;letter-spacing:.04em}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:8px}
 .dot.ok{background:var(--good);box-shadow:0 0 10px var(--good)}.dot.err{background:var(--bad);box-shadow:0 0 10px var(--bad)}
 
-.card{position:relative;background:linear-gradient(155deg,#15171c 0%,#0c0d10 60%,#0a0b0e 100%);border:1px solid rgba(214,179,112,.16);border-radius:22px;padding:22px 24px;margin-bottom:22px;
- box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 60px -28px rgba(0,0,0,.85),0 0 0 1px rgba(0,0,0,.6)}
+.card{position:relative;background:var(--card-bg);border:1px solid rgba(214,179,112,.16);border-radius:22px;padding:22px 24px;margin-bottom:22px;
+ box-shadow:var(--card-shadow)}
 .card::before{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(240,217,166,.55),transparent)}
 .card h2{font:400 11px/1.2 "Segoe UI",system-ui,sans-serif;margin:0;letter-spacing:.3em;text-transform:uppercase;color:var(--gold)}
 .card .hint,.hint{font-size:12px;color:var(--ink2);letter-spacing:.03em}
@@ -510,7 +530,7 @@ nav a:hover{color:#15110a;background:linear-gradient(135deg,var(--gold2),var(--g
 .seg button:first-child{border-radius:999px 0 0 999px}.seg button:last-child{border-radius:0 999px 999px 0}
 .seg button+button{border-left:0}
 .seg button:hover,.btn:hover,.chip:hover{color:var(--gold2);border-color:var(--gold)}
-.seg button.on{background:linear-gradient(135deg,var(--gold2),var(--gold) 55%,var(--gold3));color:#15110a;border-color:transparent;font-weight:600;box-shadow:0 4px 18px -4px rgba(214,179,112,.55)}
+.seg button.on{background:var(--goldgrad);color:#15110a;border-color:transparent;font-weight:600;box-shadow:0 4px 18px -4px rgba(214,179,112,.55)}
 .btn{border-radius:999px;margin-left:8px}
 .chip{border-radius:999px;display:inline-flex;align-items:center;gap:7px;margin-right:6px}
 .chip i{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -536,21 +556,21 @@ nav a:hover{color:#15110a;background:linear-gradient(135deg,var(--gold2),var(--g
 .cbox{position:relative}
 svg.chart{display:block;width:100%;height:320px}
 svg.chart text{fill:var(--muted);font-size:11px;letter-spacing:.04em}
-.tip{position:absolute;pointer-events:none;background:rgba(14,15,18,.94);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;box-shadow:0 18px 40px rgba(0,0,0,.6);display:none;min-width:200px;z-index:3;backdrop-filter:blur(6px)}
+.tip{position:absolute;pointer-events:none;background:var(--tipbg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;box-shadow:0 18px 40px rgba(0,0,0,.6);display:none;min-width:200px;z-index:3;backdrop-filter:blur(6px)}
 .tip b{display:block;margin-bottom:6px;font-weight:600;color:var(--gold2);letter-spacing:.06em}
 .tip div{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums;padding:1px 0}
 .tip i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:7px}
 
 /* analysis */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;margin-bottom:16px}
-.kpi{border:1px solid rgba(214,179,112,.14);border-radius:16px;padding:16px 18px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.008))}
+.kpi{border:1px solid rgba(214,179,112,.14);border-radius:16px;padding:16px 18px;background:var(--tile)}
 .kpi .lab{font-size:10.5px;color:var(--ink2);display:flex;align-items:center;gap:9px;letter-spacing:.2em;text-transform:uppercase}
 .sw{width:9px;height:9px;border-radius:50%;display:inline-block}
 .kpi .val{font:300 38px/1.1 Georgia,"Times New Roman",serif;margin-top:8px;font-variant-numeric:tabular-nums;color:var(--ink)}
 .kpi .val small{font:400 13px "Segoe UI",system-ui,sans-serif;color:var(--gold);margin-left:6px;letter-spacing:.14em;text-transform:uppercase}
 .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
 .ratios{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px;margin-bottom:18px}
-.ratio{border:1px solid rgba(214,179,112,.14);border-radius:16px;padding:16px 18px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.008))}
+.ratio{border:1px solid rgba(214,179,112,.14);border-radius:16px;padding:16px 18px;background:var(--tile)}
 .ratio h3{font:400 10.5px/1.2 "Segoe UI",system-ui,sans-serif;margin:0 0 12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
 .donutrow{display:flex;align-items:center;gap:16px}
 .donutrow p{margin:0;font-size:12px;color:var(--ink2)}
@@ -579,12 +599,13 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  #flow .t{font-size:9.5px;letter-spacing:.1em}
  .donutrow{flex-direction:column;align-items:flex-start}
 }
-::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#2a2c31;border-radius:8px}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
 </style></head><body><div class="wrap">
 
 <header>
  <h1>Solární elektrárna<small id="model">GW10K-ET</small></h1>
  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <span class="seg themeseg" id="themeseg" aria-label="Vzhled"><button data-t="dark">Tmavý</button><button data-t="light">Světlý</button><button data-t="auto">Auto</button></span>
   <div class="status"><span class="dot" id="dot"></span><span id="status">připojování…</span></div>
   <nav><a href="#live">Živě</a><a href="#ctl">Ovládání</a><a href="#prices">Ceny</a><a href="#analysis">Analýza</a></nav>
  </div>
@@ -1041,6 +1062,18 @@ async function tickStats(){
   try{STATS=await (await fetch('/api/stats')).json();}catch(e){}
   drawStats();
 }
+function themePref(){try{return localStorage.getItem('theme')||'auto';}catch(e){return 'auto';}}
+const mqLight=matchMedia('(prefers-color-scheme: light)');
+function applyTheme(redraw){
+  const p=themePref(),light=p==='light'||(p==='auto'&&mqLight.matches);
+  document.documentElement.dataset.theme=light?'light':'dark';
+  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=light?'#f3efe6':'#060709';
+  document.querySelectorAll('#themeseg button').forEach(b=>b.classList.toggle('on',b.dataset.t===p));
+  if(redraw){drawFlow();drawChart();drawStats();drawPrices();}
+}
+document.querySelectorAll('#themeseg button').forEach(b=>b.onclick=()=>{try{localStorage.setItem('theme',b.dataset.t);}catch(e){}applyTheme(true);});
+(mqLight.addEventListener?mqLight.addEventListener.bind(mqLight,'change'):mqLight.addListener.bind(mqLight))(()=>{if(themePref()==='auto')applyTheme(true);});
+applyTheme(false);
 addEventListener('resize',()=>{drawFlow();drawChart();drawStats();});
 tick();tickStats();tickPrices();ctlLoad();setInterval(tick,5000);setInterval(tickStats,60000);setInterval(tickPrices,300000);setInterval(drawPrices,60000);
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');}catch(e){}
