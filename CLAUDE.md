@@ -50,10 +50,9 @@ Komunikace s uživatelem je česky.
 - Oznámení na telefon mají obě verze (`en=(titulek,text)` v `notify`), jazyk si ukládá každý telefon při zapnutí.
 - Web `blackbirds-web` má vlastní, jednoduchý přepínač (`data-en`).
 
-## Nabíjení v nejlevnějších hodinách (`nabijeni.py`)
-- `make_plan()` je čistá funkce (ceny v Kč/kWh po hodinách, místní čas, stav baterie, nastavení) a vrací stav `vypnuto|netreba|ceka|zadne|nevyplati|naplanovano`. Řídí ji nastavení (cíl, okno, cenový strop, minimální rozdíl, kapacita); výchozí je VYPNUTO.
-- Počítá se s kapacitou 10 kWh (odhad z dat: 10,1 až 10,9 kWh), nabíjecím výkonem 4,5 kW a účinností 0,9. Dny s 23 nebo 25 hodinami (změna času) se přeskakují, plán čeká.
-- `tick()` volá `run_control` při každém čtení měniče: spustí nabíjení stejnou cestou jako ruční (`ovladani.execute("charge", until=konec hodiny)`), takže platí záloha, návrat zpět, konec při dosažení cíle nebo konci hodiny. Ruční zrušení blok uzavře a plán ho znovu nespustí. Stav je v `nabijeni_stav.json` (v .gitignore).
+## Nabíjení v nejlevnějším bloku (`nabijeni.py`)
+- `make_plan()` je čistá funkce (ceny v Kč/kWh po hodinách, místní čas, stav baterie, nastavení, konec posledního nabíjení) a vrací stav `vypnuto|netreba|ceka|naplanovano`. V příštích 24 hodinách hledá nejlevnější SOUVISLÝ blok `hodin` hodin (výchozí 3). Bez cenového stropu a bez minimálního rozdílu (uživatel to tak chtěl). Mezi nabíjeními je odstup 12 h (`MIN_GAP_H`). Nastavení: `enabled` (výchozí VYPNUTO), `target` (výchozí 100), `hodin`, `kapacita`.
+- Počítá se s kapacitou 10 kWh (odhad z dat: 10,1 až 10,9 kWh) a výkonem 4,5 kW. Dny s 23 nebo 25 hodinami (změna času) se přeskakují.
+- `tick()` volá `run_control` při každém čtení měniče: spustí nabíjení stejnou cestou jako ruční (`ovladani.execute("charge", until=konec bloku)`), takže platí záloha, návrat zpět, konec při dosažení cíle nebo na konci bloku. Ruční zrušení blok uzavře a plán ho znovu nespustí. Stav je v `nabijeni_stav.json` (v .gitignore).
 - Když je PC vypnuté během nabíjení, nabíjení v měniči zůstane do cíle; po restartu dashboardu se režim vrátí (stav `charge` se načítá ze zálohy).
 - Nastavení jde přes `POST /api/ovladani` s akcí `plan` (jen uloží, do měniče nezapisuje). Na veřejné ukázce je stejné ovládání jako maketa (`demoPlanCalc` v `sestav_vyloha.py`).
-
