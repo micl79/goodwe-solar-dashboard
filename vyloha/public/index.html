@@ -331,7 +331,7 @@ const EN={
 "Ukázka: nic se neodeslalo a v elektrárně se nic nezměnilo.":"Demo: nothing was sent and nothing changed in the power plant.",
 "V ukázce se upozornění nezapínají.":"Notifications are not turned on in the demo.",
 /* stavový řádek */
-"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}","Nabíjení v nejlevnějším bloku":"Charging in the cheapest block",
+"výpadek spojení s měničem: {0}":"connection to the inverter lost: {0}","Dashboard nevidí měnič. Nejste mimo domácí síť?":"The dashboard cannot see the inverter. Are you away from your home network?","data jsou stará {0} min (naposledy {1})":"data is {0} min old (last at {1})","živě · {0}":"live · {0}","Nabíjení v nejlevnějším bloku":"Charging in the cheapest block",
 "Plán je vypnutý. Zapnutím se v příštích 24 hodinách najde nejlevnější souvislý blok hodin a v něm se baterie nabije.":"The plan is off. When turned on, the cheapest consecutive block of hours in the next 24 hours is found and the battery is charged in it.",
 "Probíhá nabíjení podle plánu.":"Charging according to the plan is in progress.","Plán se připravuje…":"Preparing the plan…",
 "Cílový stav už je splněn (baterie {0}), nabíjení není potřeba.":"The target level is already met (battery {0}), charging is not needed.",
@@ -815,7 +815,10 @@ function render(){
   drawFlow();drawToday();
   const d=$('dot'),s=$('status');
   if(DEMO&&NOW){d.className='dot demo';s.textContent=L('simulovaná ukázka · virtuální data');}
-  else if(ERR){d.className='dot err';s.textContent=L('výpadek spojení s měničem: {0}',T(ERR));}
+  else if(ERR){d.className='dot err';
+    const lost=/Unable to connect to the inverter|MaxRetriesException|No valid response|network is unreachable|WinError/i.test(ERR);
+    s.textContent=lost?L('Dashboard nevidí měnič. Nejste mimo domácí síť?'):L('výpadek spojení s měničem: {0}',T(ERR));
+    s.title=lost?ERR:'';}
   else if(NOW){const age=Date.now()/1000-NOW.ts;
     if(age>180){d.className='dot err';s.textContent=L('data jsou stará {0} min (naposledy {1})',Math.round(age/60),hhmm(NOW.ts));}
     else{d.className='dot ok';s.textContent=L('živě · {0}',hhmmss(NOW.ts));}}
