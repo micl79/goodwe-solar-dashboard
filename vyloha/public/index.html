@@ -716,7 +716,7 @@ function planText(){
   if(p.stav==='naplanovano')return L('Naplánováno: {0}.',p.bloky.map(b=>planDay(b.start)+' '+b.start.slice(11,16)+'–'+b.end.slice(11,16)+' ('+fmtK(b.cena,2)+' '+L('Kč/kWh')+')').join(', '))+(p.castecne?' '+L('Blok je krátký, baterie se nemusí dobít celá.'):'');
   return '';
 }
-const PWR=v=>PC(v)+' ≈ '+fmtK(v*0.054,1)+' kW';   // 100 % = zhruba 5,4 kW (naměřené maximum)
+const PWR=v=>PC(v)+' ≈ '+fmtK(Math.min(v*0.1,6.5),1)+' kW';   // % = podíl jmenovitého výkonu měniče (10 kW); víc než asi 6,5 kW baterie nepřijme
 function planParams(on){
   const g=(id,d)=>$(id)?+$(id).value:d,s=(PLAN&&PLAN.settings)||{};
   return {enabled:on,target:g('pt',s.target),hodin:g('ph',s.hodin),vykon:g('pv',s.vykon||100)};
@@ -759,7 +759,7 @@ function drawCtl(){
     $('unlock').onclick=go;$('pin').onkeydown=e=>{if(e.key==='Enter')go();};return;}
   st.textContent='odemčeno';
   const S=CTL,soc=NOW?Math.round(NOW.soc):null,P=S.puvodne||{};
-  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??100, cp=cv.cp??60;
+  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??100, cp=cv.cp??35;
   const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">${L('Vrátit na původní ({0})',txt(P[g]))}</button>`:'';
   let h=`<div class="cgrp" style="border-top:0;padding-top:0"><h3>Režim</h3><div class="chips">`+
     ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}" data-tip="${L(MODE_TIP[m])}">${MODE_LBL[m]}</button>`).join('')+

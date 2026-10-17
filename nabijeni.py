@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STAV_PATH = os.path.join(HERE, "nabijeni_stav.json")
 
 DEFAULTS = {"enabled": False, "target": 100, "hodin": 3, "kapacita": 10.0, "vykon": 100}
+INV_KW = 10.0            # jmenovitý výkon měniče: výkon nabíjení v % je jeho podíl (60 % = 6 kW)
 P_EFF_KW = 4.5          # výkon nabíjení, se kterým se počítá (měřené maximum 5,4 kW, BMS omezuje na zhruba 5,9 kW)
 MIN_GAP_H = 12          # nejkratší odstup mezi dvěma nabíjeními
 HORIZON_H = 24          # kam dopředu se nejlevnější blok hledá
@@ -99,7 +100,7 @@ def make_plan(prices, now, soc, st, last_end=None):
                 best = (tot, t)
     if best is None:
         return {"stav": "ceka"}
-    cap = n * P_EFF_KW * st.get("vykon", 100) / 100      # kolik se do baterie v bloku vejde při zvoleném výkonu
+    cap = n * min(P_EFF_KW, st.get("vykon", 100) / 100 * INV_KW)      # kolik se do baterie v bloku vejde (% = podíl 10 kW měniče)
     s0 = best[1]
     e0 = s0 + n * HOUR
     avg = best[0] / n
