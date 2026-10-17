@@ -17,7 +17,7 @@ OUT = os.path.join(HERE, "vyloha", "public")
 
 DEMO = r"""/* ---------- ukázka ovládání: běží jen v prohlížeči návštěvníka, na server se NIC neodesílá ---------- */
 CTLEN=true;UNLOCKED=true;window.DEMO_MODE=true;
-PLAN={settings:{enabled:false,target:100,hodin:3,kapacita:10},plan:null,started:null};
+PLAN={settings:{enabled:false,target:100,hodin:3,kapacita:10,vykon:100},plan:null,started:null};
 function demoPlanCalc(s){
   if(!s.enabled)return {stav:'vypnuto'};
   if(!PR||!PR.days||PR.kurz==null)return {stav:'ceka'};
@@ -32,8 +32,8 @@ function demoPlanCalc(s){
   for(const k of [...by.keys()].sort((x,y)=>x-y)){let tot=0,ok=true;for(let i=0;i<n;i++){const p=by.get(k+i*36e5);if(p==null){ok=false;break;}tot+=p;}if(ok&&(best==null||tot<best.tot-1e-9))best={tot,k};}
   if(!best)return {stav:'ceka'};
   const f=ms=>{const d=new Date(ms);return iso(d)+'T'+String(d.getHours()).padStart(2,'0')+':00';};
-  const avg=best.tot/n;
-  return {stav:'naplanovano',hodin:n,cena:+avg.toFixed(2),bloky:[{id:f(best.k),start:f(best.k),end:f(best.k+n*36e5),cena:+avg.toFixed(2),hotovo:false}],kwh:+Math.min(need,n*4.5).toFixed(1),castecne:need>n*4.5};
+  const avg=best.tot/n,cap=n*4.5*(s.vykon||100)/100;
+  return {stav:'naplanovano',hodin:n,cena:+avg.toFixed(2),bloky:[{id:f(best.k),start:f(best.k),end:f(best.k+n*36e5),cena:+avg.toFixed(2),hotovo:false}],kwh:+Math.min(need,cap).toFixed(1),castecne:need>cap};
 }
 
 CTL={work_mode:'ECO',min_soc:15,export_limit:4000,puvodne:{},charge:null};

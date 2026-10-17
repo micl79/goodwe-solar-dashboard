@@ -232,7 +232,11 @@ async def poll():
                 "bat_ch_day": g("e_bat_charge_day"), "bat_dis_day": g("e_bat_discharge_day"),
                 "e_total": g("e_total"), "model": inv.model_name,
                 "bat_mode": g("battery_mode_label"), "work_mode": g("work_mode_label"),
-                "temp": g("temperature"),
+                "temp": g("temperature"), "bat_temp": g("battery_temperature"),
+                "bat_detail": {"temp": g("battery_temperature"), "tmin": g("battery_min_cell_temp"), "tmax": g("battery_max_cell_temp"),
+                               "v": g("vbattery1"), "i": g("ibattery1"), "soh": g("battery_soh"),
+                               "vmin": g("battery_min_cell_voltage"), "vmax": g("battery_max_cell_voltage"),
+                               "err": bool(g("battery_error_l") or g("battery_error_h")), "warn": bool(g("battery_warning_l") or g("battery_warning_h"))},
             }
             row = [round(ts, 1), pv, load, grid, bat, soc]
             cnt = None
@@ -670,6 +674,7 @@ th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--grid)}th:f
  <div class="bar"><h2>Tok energie teď</h2><span class="hint" id="modeinfo"></span></div>
  <svg id="flow" viewBox="0 0 900 390" role="img" aria-label="Tok energie mezi solárem, sítí, domem, spotřebou a baterií"></svg>
  <div class="today" id="today"></div>
+ <div id="batdet" style="display:none"><div class="bar" style="margin-top:22px"><h2>Detail baterie</h2></div><div class="today" id="batdetg" style="margin-top:0"></div></div>
 </section>
 
 <section class="card">
@@ -727,7 +732,8 @@ const EN={
 /* tok energie */
 "Solár (FVE)":"Solar (PV)","vyrábí":"producing","nevyrábí":"not producing","odběr ze sítě":"importing from grid","dodávka do sítě":"exporting to grid",
 "bez výměny":"no exchange","aktuální odběr":"current consumption","vybíjí se":"discharging","nabíjí se":"charging","nečinná":"idle","měnič":"inverter",
-"Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}",
+"Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}"," · teplota baterie: {0} °C":" · battery temperature: {0} °C",
+"Detail baterie":"Battery detail","Teplota baterie":"Battery temperature","Články":"Cells","Napětí baterie":"Battery voltage","Proud":"Current","Zdraví baterie":"Battery health","Napětí článků":"Cell voltage","Stav baterie":"Battery status","v pořádku":"OK","chyba":"error","varování":"warning",
 "Dnes vyrobeno":"Produced today","Dnes spotřebováno":"Consumed today","Dnes nabito do baterie":"Charged into battery today","Dnes vybito z baterie":"Discharged from battery today",
 "Nabití baterie":"Battery level","Čekám na první data…":"Waiting for the first data…",
 /* analýza */
@@ -803,7 +809,7 @@ const EN={
 "Hotovo, další blok se naplánuje po odstupu 12 hodin.":"Done, the next block will be planned after a 12-hour gap.","Naplánováno: {0}.":"Planned: {0}.",
 "Blok je krátký, baterie se nemusí dobít celá.":"The block is short, so the battery may not be fully charged.","dnes":"today","zítra":"tomorrow",
 "Počet hodin":"Number of hours","Zapnout plán":"Turn on the plan","Uložit změny":"Save changes","Vypnout plán":"Turn off the plan","Plán nabíjení uložen.":"Charging plan saved.","Plán nabíjení":"Charging plan",
-"Nabíjet baterii na {0} % v nejlevnějším souvislém bloku {1} h (nejvýš jednou za 12 hodin)? Nabíjení samo skončí po dosažení cíle nebo na konci bloku.":"Charge the battery to {0}% in the cheapest consecutive block of {1} h (at most once every 12 hours)? Charging ends by itself when the target is reached or the block ends.",
+"Nabíjet baterii na {0} % v nejlevnějším souvislém bloku {1} h výkonem {2} % (nejvýš jednou za 12 hodin)? Nabíjení samo skončí po dosažení cíle nebo na konci bloku.":"Charge the battery to {0}% in the cheapest consecutive block of {1} h at {2}% power (at most once every 12 hours)? Charging ends by itself when the target is reached or the block ends.",
 "Vypnout automatické nabíjení v nejlevnějším bloku?":"Turn off automatic charging in the cheapest block?",
 "Kapacita baterie":"Battery capacity","Neplatné nastavení":"Invalid settings",
 "simulovaná ukázka · virtuální data":"simulated demo · virtual data",
@@ -898,13 +904,13 @@ function icon(kind,x,y,soc){
   if(kind==='bat'){const h=Math.max(0,Math.min(1,soc/100))*19;
     return `${badge}<g><rect x="${x-9}" y="${y-12}" width="18" height="25" rx="3.5" fill="none" stroke="${c}" stroke-width="2.2"/><rect x="${x-4}" y="${y-16}" width="8" height="4" rx="1.5" fill="${c}"/><rect x="${x-6.2}" y="${y+10.5-h}" width="12.4" height="${h}" rx="1.8" fill="${c}"/></g>`;}
 }
-function node(x,y,kind,title,value,sub,soc,active){
-  const col={sun:'--s1',grid:'--s3',load:'--s2',bat:'--s4'}[kind];
-  return `<g filter="url(#sh)"><rect class="node" x="${x}" y="${y}" width="190" height="112" rx="18" fill="url(#ng)"/></g>
-  <rect x="${x+14}" y="${y+104}" width="162" height="3" rx="1.5" fill="${css(col)}" opacity="${active?.9:.25}"/>
+function node(x,y,kind,title,value,sub,soc,active,extra){
+  const col={sun:'--s1',grid:'--s3',load:'--s2',bat:'--s4'}[kind],h=extra?136:112;
+  return `<g filter="url(#sh)"><rect class="node" x="${x}" y="${y}" width="190" height="${h}" rx="18" fill="url(#ng)"/></g>
+  <rect x="${x+14}" y="${y+h-8}" width="162" height="3" rx="1.5" fill="${css(col)}" opacity="${active?.9:.25}"/>
   ${icon(kind,x+36,y+36,soc)}
   <text class="t" x="${x+70}" y="${y+41}">${title}</text>
-  <text class="v" x="${x+20}" y="${y+80}">${value}</text><text class="s" x="${x+20}" y="${y+99}">${sub}</text>`;
+  <text class="v" x="${x+20}" y="${y+80}">${value}</text><text class="s" x="${x+20}" y="${y+99}">${sub}</text>${extra?`<text class="s" x="${x+20}" y="${y+119}">${extra}</text>`:''}`;
 }
 function flowline(d,color,watts,rev,id){
   const on=Math.abs(watts)>=20, w=3+Math.min(4,Math.abs(watts)/1500);
@@ -922,9 +928,9 @@ function drawFlow(){
   const n=NOW||{pv:0,load:0,grid:0,bat:0,soc:0};
   const pvw=n.pv,gw=n.grid,bw=n.bat,lw=n.load;
   const mob=window.innerWidth<700;
-  const LY=mob?{vb:'0 0 400 504',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
+  const LY=mob?{vb:'0 0 400 530',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
      p_pv:'M100 118 C100 190 100 245 135 258',p_gr:'M100 386 C100 350 105 325 135 318',p_ld:'M265 258 C300 245 300 190 300 118',p_bt:'M300 386 C300 350 295 325 265 318'}
-   :{vb:'0 0 900 390',pv:[10,36],ld:[700,36],gr:[10,242],bt:[700,242],dx:0,dy:0,
+   :{vb:'0 0 900 412',pv:[10,36],ld:[700,36],gr:[10,242],bt:[700,242],dx:0,dy:0,
      p_pv:'M200 92 C300 92 310 160 392 170',p_gr:'M200 298 C300 298 310 230 392 220',p_ld:'M508 170 C590 160 600 92 700 92',p_bt:'M700 298 C600 298 590 230 508 220'};
   $('flow').setAttribute('viewBox',LY.vb);
   let s=`<defs>
@@ -948,11 +954,25 @@ function drawFlow(){
   s+=node(LY.pv[0],LY.pv[1],'sun','Solár (FVE)',fmtW(pvw),pvw>=20?'vyrábí':'nevyrábí',0,pvw>=20);
   s+=node(LY.gr[0],LY.gr[1],'grid','Síť',fmtW(Math.abs(gw)),gw>=20?'odběr ze sítě':gw<=-20?'dodávka do sítě':'bez výměny',0,Math.abs(gw)>=20);
   s+=node(LY.ld[0],LY.ld[1],'load','Spotřeba domu',fmtW(lw),'aktuální odběr',0,lw>=20);
-  s+=node(LY.bt[0],LY.bt[1],'bat',L('Baterie {0}',PC(Math.round(n.soc))),fmtW(Math.abs(bw)),bw>=20?'vybíjí se':bw<=-20?'nabíjí se':'nečinná',n.soc,Math.abs(bw)>=20);
+  s+=node(LY.bt[0],LY.bt[1],'bat',L('Baterie {0}',PC(Math.round(n.soc))),fmtW(Math.abs(bw)),(bw>=20?L('vybíjí se'):bw<=-20?L('nabíjí se'):L('nečinná'))+'',n.soc,Math.abs(bw)>=20,(n.bat_detail&&n.bat_detail.temp!=null?fmtK(n.bat_detail.temp,0)+' °C · '+fmtK(n.bat_detail.v,0)+' V · '+fmtK(Math.abs(n.bat_detail.i),1)+' A':''));
   $('flow').innerHTML=s;
   $('modeinfo').textContent=NOW&&NOW.work_mode?(L('režim: {0}',NOW.work_mode)+(NOW.bat_mode?L(' · baterie: {0}',NOW.bat_mode):'')):'';
 }
+function drawBat(){
+  const b=NOW&&NOW.bat_detail,box=$('batdet');if(!box)return;
+  if(!b||b.temp==null){box.style.display='none';return;}
+  const u=(v,d,s)=>v==null?'–':fmtK(v,d)+' '+s;
+  const rng=b.tmin!=null&&b.tmax!=null?fmtK(b.tmin,0)+'–'+fmtK(b.tmax,0)+' °C':'–';
+  const cells=b.vmin!=null&&b.vmax!=null?fmtK(b.vmin,3)+'–'+fmtK(b.vmax,3)+' V':'–';
+  const st=b.err?'chyba':b.warn?'varování':'v pořádku';
+  const hot=b.temp>=45||b.temp<5;
+  const items=[['Teplota baterie',u(b.temp,0,'°C'),hot],['Články',rng],['Napětí baterie',u(b.v,0,'V')],['Proud',u(b.i==null?null:Math.abs(b.i),1,'A')],
+    ['Zdraví baterie',u(b.soh,0,'%')],['Napětí článků',cells],['Stav baterie',L(st),b.err||b.warn]];
+  $('batdetg').innerHTML=items.map(([l,v,w])=>`<div><div class="v"${w?' style="color:#e5654d"':''}>${v}</div><div class="l">${l}</div></div>`).join('');
+  box.style.display='';
+}
 function drawToday(){
+  drawBat();
   if(!NOW)return;
   $('today').innerHTML=[['Dnes vyrobeno',NOW.e_day],['Dnes spotřebováno',NOW.e_load_day],['Dnes nabito do baterie',NOW.bat_ch_day],['Dnes vybito z baterie',NOW.bat_dis_day]]
    .map(([l,v])=>`<div><div class="v">${fmtK(v)} <span style="font-size:13px;font-weight:500;color:var(--ink2)">kWh</span></div><div class="l">${l}</div></div>`).join('');
@@ -1143,9 +1163,10 @@ function planText(){
   if(p.stav==='naplanovano')return L('Naplánováno: {0}.',p.bloky.map(b=>planDay(b.start)+' '+b.start.slice(11,16)+'–'+b.end.slice(11,16)+' ('+fmtK(b.cena,2)+' '+L('Kč/kWh')+')').join(', '))+(p.castecne?' '+L('Blok je krátký, baterie se nemusí dobít celá.'):'');
   return '';
 }
+const PWR=v=>PC(v)+' ≈ '+fmtK(v*0.054,1)+' kW';   // 100 % = zhruba 5,4 kW (naměřené maximum)
 function planParams(on){
   const g=(id,d)=>$(id)?+$(id).value:d,s=(PLAN&&PLAN.settings)||{};
-  return {enabled:on,target:g('pt',s.target),hodin:g('ph',s.hodin)};
+  return {enabled:on,target:g('pt',s.target),hodin:g('ph',s.hodin),vykon:g('pv',s.vykon||100)};
 }
 const hh2=h=>String(h).padStart(2,'0')+':00';
 function priceTxt(){
@@ -1212,13 +1233,14 @@ function drawCtl(){
     (S.charge?`<div class="chargenote">${L('Probíhá nabíjení do {0} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.',S.charge.target)}</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
     `<div class="hint">${L('Baterie teď: {0}. Nabíjí se i ze sítě.',soc==null?'–':PC(soc))}</div>
     <label>Cílový stav <b id="cs_v">${PC(cs)}</b></label><input type="range" id="cs" min="20" max="100" step="5" value="${cs}">
-    <label>Výkon nabíjení <b id="cp_v">${PC(cp)}</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
+    <label>Výkon nabíjení <b id="cp_v">${PWR(cp)}</b></label><input type="range" id="cp" min="10" max="100" step="10" value="${cp}">
     <button class="btn go" id="cgo">Nabíjet</button>`)+`</div>`;
   if(PLAN&&PLAN.settings){const ps=PLAN.settings;
-    const pt=cv.pt??ps.target, ph=cv.ph??ps.hodin;
+    const pt=cv.pt??ps.target, ph=cv.ph??ps.hodin, pv=cv.pv??(ps.vykon||100);
     h+=`<div class="cgrp"><h3>Nabíjení v nejlevnějším bloku</h3><div class="hint">${planText()}</div>
     <label>Cílový stav <b id="pt_v">${PC(pt)}</b></label><input type="range" id="pt" min="20" max="100" step="5" value="${pt}">
     <label>Počet hodin <b id="ph_v">${ph} h</b></label><input type="range" id="ph" min="1" max="8" step="1" value="${ph}">
+    <label>Výkon nabíjení <b id="pv_v">${PWR(pv)}</b></label><input type="range" id="pv" min="10" max="100" step="10" value="${pv}">
     <button class="btn go" id="pgo">${ps.enabled?'Uložit změny':'Zapnout plán'}</button>${ps.enabled?'<button class="btn" id="poffp">Vypnout plán</button>':''}</div>`;}
   h+=`<div class="cgrp"><h3>Nejnižší stav baterie</h3><div class="hint">${L('Při vybíjení se baterie nevybije pod tuto hodnotu. Teď: {0} %.',S.min_soc)}</div>
     <label>Nejnižší stav <b id="ms_v">${PC(ms)}</b></label><input type="range" id="ms" min="10" max="50" step="5" value="${ms}">
@@ -1234,12 +1256,12 @@ function drawCtl(){
   el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=b.dataset.m;if(m!==S.work_mode)ask(L('Přepnout režim měniče na „{0}“?',T(MODE_LBL[m])),'mode',{mode:m});});
   el.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>ask('Vrátit toto nastavení na původní hodnotu?','revert',{group:b.dataset.back}));
   [['cs','%'],['cp','%'],['ms','%'],['ex','W']].forEach(([id,u])=>{const r=$(id);if(!r)return;
-    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=id==='ex'?fmtK(r.value,0)+' W':PC(r.value);};});
+    r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=id==='ex'?fmtK(r.value,0)+' W':id==='cp'?PWR(+r.value):PC(r.value);};});
   if($('cgo'))$('cgo').onclick=()=>ask(L('Nabíjet baterii na {0} % výkonem {1} %? Nabíjí se i ze sítě.',$('cs').value,$('cp').value)+priceTxt()+L(' Po dosažení cíle se režim sám vrátí zpět (nejdéle za 8 hodin).'),'charge',{target:+$('cs').value,power:+$('cp').value});
   if($('cstop'))$('cstop').onclick=()=>ask('Zrušit nabíjení a vrátit režim, jaký byl před ním?','revert',{group:'charge'});
-  [['pt',v=>PC(v)],['ph',v=>v+' h']].forEach(([id,f])=>{const r=$(id);if(!r)return;
+  [['pt',v=>PC(v)],['ph',v=>v+' h'],['pv',PWR]].forEach(([id,f])=>{const r=$(id);if(!r)return;
     r.oninput=()=>{cv[id]=+r.value;$(id+'_v').textContent=f(+r.value);};});
-  if($('pgo'))$('pgo').onclick=()=>{const q=planParams(true);ask(L('Nabíjet baterii na {0} % v nejlevnějším souvislém bloku {1} h (nejvýš jednou za 12 hodin)? Nabíjení samo skončí po dosažení cíle nebo na konci bloku.',q.target,q.hodin),'plan',q);};
+  if($('pgo'))$('pgo').onclick=()=>{const q=planParams(true);ask(L('Nabíjet baterii na {0} % v nejlevnějším souvislém bloku {1} h výkonem {2} % (nejvýš jednou za 12 hodin)? Nabíjení samo skončí po dosažení cíle nebo na konci bloku.',q.target,q.hodin,q.vykon),'plan',q);};
   if($('poffp'))$('poffp').onclick=()=>ask(L('Vypnout automatické nabíjení v nejlevnějším bloku?'),'plan',planParams(false));
   $('mgo').onclick=()=>ask(L('Nejnižší stav baterie při vybíjení nastavit na {0} %?',$('ms').value),'min_soc',{value:+$('ms').value});
   $('ego').onclick=()=>ask(L('Limit prodeje do sítě nastavit na {0} W?',fmtK($('ex').value,0)),'export',{value:+$('ex').value});

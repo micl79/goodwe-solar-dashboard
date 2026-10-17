@@ -20,7 +20,7 @@ import ovladani
 HERE = os.path.dirname(os.path.abspath(__file__))
 STAV_PATH = os.path.join(HERE, "nabijeni_stav.json")
 
-DEFAULTS = {"enabled": False, "target": 100, "hodin": 3, "kapacita": 10.0}
+DEFAULTS = {"enabled": False, "target": 100, "hodin": 3, "kapacita": 10.0, "vykon": 100}
 P_EFF_KW = 4.5          # výkon nabíjení, se kterým se počítá (měřené maximum 5,4 kW, BMS omezuje na zhruba 5,9 kW)
 MIN_GAP_H = 12          # nejkratší odstup mezi dvěma nabíjeními
 HORIZON_H = 24          # kam dopředu se nejlevnější blok hledá
@@ -41,7 +41,8 @@ def clean_settings(d):
         raise ValueError("Neplatné nastavení")
     out["enabled"] = bool(d.get("enabled", out["enabled"]))
     for k, (lo, hi, name, typ) in {"target": (20, 100, "Cílový stav", int), "hodin": (1, 8, "Počet hodin", int),
-                                   "kapacita": (3.0, 30.0, "Kapacita baterie", float)}.items():
+                                   "kapacita": (3.0, 30.0, "Kapacita baterie", float),
+                                   "vykon": (10, 100, "Výkon nabíjení", int)}.items():
         if k not in d:
             continue
         try:
@@ -98,13 +99,14 @@ def make_plan(prices, now, soc, st, last_end=None):
                 best = (tot, t)
     if best is None:
         return {"stav": "ceka"}
+    cap = n * P_EFF_KW * st.get("vykon", 100) / 100      # kolik se do baterie v bloku vejde při zvoleném výkonu
     s0 = best[1]
     e0 = s0 + n * HOUR
     avg = best[0] / n
     return {"stav": "naplanovano", "hodin": n, "cena": round(avg, 2),
             "bloky": [{"id": s0.strftime("%Y-%m-%dT%H"), "start": s0.isoformat(timespec="minutes"),
                        "end": e0.isoformat(timespec="minutes"), "cena": round(avg, 2)}],
-            "kwh": round(min(need_kwh, n * P_EFF_KW), 1), "castecne": need_kwh > n * P_EFF_KW}
+            "kwh": round(min(need_kwh, cap), 1), "castecne": need_kwh > cap}
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +203,7 @@ async def tick(inv, soc, prices, now=None, notify=None):
             continue
         bs, be = dt.datetime.fromisoformat(b["start"]), dt.datetime.fromisoformat(b["end"])
         if bs <= now < be and soc < st["target"] - 1:
-            await ovladani.execute(inv, "charge", {"target": st["target"], "power": 100}, "plán", soc, until=be.timestamp())
+            await ovladani.execute(inv, "charge", {"target": st["target"], "power": st.get("vykon", 100)}, "plán", soc, until=be.timestamp())
             _s["started"], _s["started_end"] = b["id"], b["end"]
             ovladani._log("plán", "nabíjení v nejlevnějším bloku", f"{b['start']}–{b['end']}, {b['cena']} Kč/kWh, cíl {st['target']} %")
             save()
