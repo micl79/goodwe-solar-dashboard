@@ -116,6 +116,7 @@ nav a:hover{color:#15110a;background:var(--goldgrad);border-color:transparent}
 .chip{border-radius:999px;display:inline-flex;align-items:center;gap:7px;margin-right:6px}
 .chip i{width:9px;height:9px;border-radius:3px;display:inline-block}
 .chip.off{opacity:.4}
+#htip{position:fixed;display:none;z-index:1000;max-width:270px;padding:11px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--gold3);color:var(--ink);font-size:12.5px;line-height:1.5;letter-spacing:.01em;box-shadow:0 10px 30px rgba(0,0,0,.35);pointer-events:none;text-transform:none}
 .chip.off i{background:transparent!important;border:1.5px solid var(--muted)}
 
 /* energy flow */
@@ -265,7 +266,12 @@ const EN={
 "Solár (FVE)":"Solar (PV)","vyrábí":"producing","nevyrábí":"not producing","odběr ze sítě":"importing from grid","dodávka do sítě":"exporting to grid",
 "bez výměny":"no exchange","aktuální odběr":"current consumption","vybíjí se":"discharging","nabíjí se":"charging","nečinná":"idle","měnič":"inverter",
 "Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}"," · teplota baterie: {0} °C":" · battery temperature: {0} °C",
-"Detail baterie":"Battery detail","síť nedostupná":"grid unavailable","baterie vydrží asi {0}":"battery lasts about {0}","Teplota baterie":"Battery temperature","Články":"Cells","Napětí baterie":"Battery voltage","Proud":"Current","Zdraví baterie":"Battery health","Napětí článků":"Cell voltage","Stav baterie":"Battery status","v pořádku":"OK","chyba":"error","varování":"warning",
+"Detail baterie":"Battery detail",
+"Výchozí režim. Solár napájí dům, přebytek nabíjí baterii a zbytek se prodává do sítě. Když solár nestačí, dům bere z baterie a teprve potom ze sítě.":"The default mode. Solar powers the house, the surplus charges the battery and the rest is sold to the grid. When solar is not enough, the house draws from the battery first and only then from the grid.",
+"Řízení podle časového plánu. V nastavených hodinách se baterie nabíjí ze sítě nebo vybíjí, mimo ně se měnič chová běžně. Hodí se pro nabíjení za nízké ceny.":"Control by a time schedule. During the set hours the battery charges from the grid or discharges; outside them the inverter behaves normally. Useful for charging at low prices.",
+"Co nejvíc vlastní výroby pro vlastní dům. Přebytek ze solárů jde nejdřív do baterie a do sítě se prodává co nejméně.":"As much of your own production as possible for your own house. Solar surplus goes to the battery first and as little as possible is sold to the grid.",
+"Odběr ze sítě se drží pod nastaveným limitem. Špičky nad limitem pokrývá baterie, takže se nepřekročí hodnota, za kterou se platí.":"Grid import is kept below a set limit. Peaks above the limit are covered by the battery, so the billed value is not exceeded.",
+"Baterie se drží nabitá pro případ výpadku sítě. Běžný provoz domu ji zbytečně nevybíjí.":"The battery is kept charged for a grid outage. Normal use of the house does not discharge it needlessly.","síť nedostupná":"grid unavailable","baterie vydrží asi {0}":"battery lasts about {0}","Teplota baterie":"Battery temperature","Články":"Cells","Napětí baterie":"Battery voltage","Proud":"Current","Zdraví baterie":"Battery health","Napětí článků":"Cell voltage","Stav baterie":"Battery status","v pořádku":"OK","chyba":"error","varování":"warning",
 "Dnes vyrobeno":"Produced today","Dnes spotřebováno":"Consumed today","Dnes nabito do baterie":"Charged into battery today","Dnes vybito z baterie":"Discharged from battery today",
 "Nabití baterie":"Battery level","Čekám na první data…":"Waiting for the first data…",
 /* analýza */
@@ -683,6 +689,20 @@ async function tickPrices(){
 let PLAN=null, PIN=null, UNLOCKED=false, CTL=null, CTLEN=null, CTLERR=null, ctlMsg='', ctlBusy=false, ctlAct=0;
 const cv={};   // rozdělané hodnoty jezdců, ať se neztratí při překreslení
 const MODE_LBL={GENERAL:'Základní',ECO:'Eco',SELF_USE:'Vlastní spotřeba',PEAK_SHAVING:'Ořezání špiček',BACKUP:'Záloha',OFF_GRID:'Ostrovní'};
+const MODE_TIP={
+ GENERAL:'Výchozí režim. Solár napájí dům, přebytek nabíjí baterii a zbytek se prodává do sítě. Když solár nestačí, dům bere z baterie a teprve potom ze sítě.',
+ ECO:'Řízení podle časového plánu. V nastavených hodinách se baterie nabíjí ze sítě nebo vybíjí, mimo ně se měnič chová běžně. Hodí se pro nabíjení za nízké ceny.',
+ SELF_USE:'Co nejvíc vlastní výroby pro vlastní dům. Přebytek ze solárů jde nejdřív do baterie a do sítě se prodává co nejméně.',
+ PEAK_SHAVING:'Odběr ze sítě se drží pod nastaveným limitem. Špičky nad limitem pokrývá baterie, takže se nepřekročí hodnota, za kterou se platí.',
+ BACKUP:'Baterie se drží nabitá pro případ výpadku sítě. Běžný provoz domu ji zbytečně nevybíjí.'};
+(function(){const tip=document.createElement('div');tip.id='htip';document.body.appendChild(tip);
+  const hide=()=>{tip.style.display='none';};
+  document.addEventListener('mouseover',e=>{const el=e.target.closest&&e.target.closest('[data-tip]');if(!el){hide();return;}
+    tip.textContent=el.dataset.tip;tip.style.display='block';
+    const r=el.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight;
+    tip.style.left=Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8)+'px';
+    tip.style.top=(r.bottom+10+h>innerHeight-8?Math.max(8,r.top-h-10):r.bottom+10)+'px';});
+  document.addEventListener('scroll',hide,true);document.addEventListener('mousedown',hide);})();
 
 function planDay(iso){const t=new Date().toLocaleDateString('sv-SE');const m=new Date(Date.now()+864e5).toLocaleDateString('sv-SE');return iso.slice(0,10)===t?L('dnes'):iso.slice(0,10)===m?L('zítra'):iso.slice(8,10)+'.'+iso.slice(5,7)+'.';}
 function planText(){
@@ -739,10 +759,10 @@ function drawCtl(){
     $('unlock').onclick=go;$('pin').onkeydown=e=>{if(e.key==='Enter')go();};return;}
   st.textContent='odemčeno';
   const S=CTL,soc=NOW?Math.round(NOW.soc):null,P=S.puvodne||{};
-  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??80, cp=cv.cp??100;
+  const ms=cv.ms??S.min_soc, ex=cv.ex??S.export_limit, cs=cv.cs??100, cp=cv.cp??60;
   const back=(g,txt)=>P[g]!=null?`<button class="btn" data-back="${g}">${L('Vrátit na původní ({0})',txt(P[g]))}</button>`:'';
   let h=`<div class="cgrp" style="border-top:0;padding-top:0"><h3>Režim</h3><div class="chips">`+
-    ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}">${MODE_LBL[m]}</button>`).join('')+
+    ['GENERAL','ECO','SELF_USE','PEAK_SHAVING','BACKUP'].map(m=>`<button class="chip ${S.work_mode===m?'on':''}" data-m="${m}" data-tip="${L(MODE_TIP[m])}">${MODE_LBL[m]}</button>`).join('')+
     `</div>`+(S.work_mode==='OFF_GRID'?'<p class="hint">Měnič je v ostrovním režimu, ten odsud nejde měnit.</p>':'')+back('mode',x=>T(MODE_LBL[x]||x))+`</div>`;
   h+=`<div class="cgrp"><h3>Nabít baterii teď</h3>`+
     (S.charge?`<div class="chargenote">${L('Probíhá nabíjení do {0} %. Samo se ukončí po dosažení cíle a vrátí režim, jaký byl před ním.',S.charge.target)}</div><button class="btn" id="cstop">Zrušit nabíjení</button>`:
