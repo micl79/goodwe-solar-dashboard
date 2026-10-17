@@ -233,6 +233,7 @@ async def poll():
                 "e_total": g("e_total"), "model": inv.model_name,
                 "bat_mode": g("battery_mode_label"), "work_mode": g("work_mode_label"),
                 "temp": g("temperature"), "bat_temp": g("battery_temperature"),
+                "grid_ok": None if g("grid_mode") is None else (g("grid_mode") == 1 and (g("vgrid") or 0) > 150),
                 "bat_detail": {"temp": g("battery_temperature"), "tmin": g("battery_min_cell_temp"), "tmax": g("battery_max_cell_temp"),
                                "v": g("vbattery1"), "i": g("ibattery1"), "soh": g("battery_soh"),
                                "vmin": g("battery_min_cell_voltage"), "vmax": g("battery_max_cell_voltage"),
@@ -260,6 +261,7 @@ async def poll():
                 append_csv(CNT_PATH, cnt)
             verejne.feed(now)
             upozorneni.tick(soc)
+            upozorneni.siet(now["grid_ok"], soc, load)
             await run_control(inv, soc)
         except Exception as e:  # noqa: BLE001 - chceme přežít jakýkoli výpadek
             with lock:
@@ -590,7 +592,7 @@ nav a:hover{color:#15110a;background:var(--goldgrad);border-color:transparent}
 #flow{width:100%;height:auto;display:block;max-height:440px}
 #flow text{fill:var(--ink);font-family:"Segoe UI",system-ui,sans-serif}
 #flow .t{fill:var(--ink2);font-size:11px;letter-spacing:.18em;text-transform:uppercase}
-#flow .v{font-size:31px;font-weight:200;letter-spacing:-.01em}
+#flow .v{font-size:31px;font-weight:300;letter-spacing:-.01em}
 #flow .s{fill:var(--muted);font-size:12px;letter-spacing:.06em}
 #flow .node{stroke:rgba(214,179,112,.30);stroke-width:1}
 .today{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:10px;padding-top:18px;border-top:1px solid rgba(214,179,112,.14)}
@@ -720,7 +722,7 @@ const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim
 const EN={
 /* hlavička, nadpisy, tlačítka */
 "Solární elektrárna":"Solar power plant","Analýza":"Analysis","Analýza energie":"Energy analysis","Baterie":"Battery",
-"Baterie (+ vybíjení, − nabíjení)":"Battery (+ discharging, − charging)","Celkem":"Total","Ceny":"Prices","Dům":"House","FVE":"PV",
+"Baterie (+ vybíjení, − nabíjení)":"Battery (+ discharging, − charging)","Celkem":"Total","Ceny":"Prices","Dům":"House","Měnič":"Inverter","FVE":"PV",
 "Měsíc":"Month","Načítám ceny…":"Loading prices…","Načítám…":"Loading…","Ovládání":"Controls","Potvrdit":"Confirm","Rok":"Year",
 "Spotová cena":"Spot price","Spotřeba domu":"House consumption","Světlý":"Light","Tmavý":"Dark","Síť":"Grid",
 "Síť (+ odběr, − dodávka)":"Grid (+ import, − export)","Tabulka":"Table","Tok energie teď":"Energy flow now","Týden":"Week",
@@ -733,7 +735,7 @@ const EN={
 "Solár (FVE)":"Solar (PV)","vyrábí":"producing","nevyrábí":"not producing","odběr ze sítě":"importing from grid","dodávka do sítě":"exporting to grid",
 "bez výměny":"no exchange","aktuální odběr":"current consumption","vybíjí se":"discharging","nabíjí se":"charging","nečinná":"idle","měnič":"inverter",
 "Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}"," · teplota baterie: {0} °C":" · battery temperature: {0} °C",
-"Detail baterie":"Battery detail","Teplota baterie":"Battery temperature","Články":"Cells","Napětí baterie":"Battery voltage","Proud":"Current","Zdraví baterie":"Battery health","Napětí článků":"Cell voltage","Stav baterie":"Battery status","v pořádku":"OK","chyba":"error","varování":"warning",
+"Detail baterie":"Battery detail","síť nedostupná":"grid unavailable","baterie vydrží asi {0}":"battery lasts about {0}","Teplota baterie":"Battery temperature","Články":"Cells","Napětí baterie":"Battery voltage","Proud":"Current","Zdraví baterie":"Battery health","Napětí článků":"Cell voltage","Stav baterie":"Battery status","v pořádku":"OK","chyba":"error","varování":"warning",
 "Dnes vyrobeno":"Produced today","Dnes spotřebováno":"Consumed today","Dnes nabito do baterie":"Charged into battery today","Dnes vybito z baterie":"Discharged from battery today",
 "Nabití baterie":"Battery level","Čekám na první data…":"Waiting for the first data…",
 /* analýza */
@@ -905,12 +907,12 @@ function icon(kind,x,y,soc){
     return `${badge}<g><rect x="${x-9}" y="${y-12}" width="18" height="25" rx="3.5" fill="none" stroke="${c}" stroke-width="2.2"/><rect x="${x-4}" y="${y-16}" width="8" height="4" rx="1.5" fill="${c}"/><rect x="${x-6.2}" y="${y+10.5-h}" width="12.4" height="${h}" rx="1.8" fill="${c}"/></g>`;}
 }
 function node(x,y,kind,title,value,sub,soc,active,extra){
-  const col={sun:'--s1',grid:'--s3',load:'--s2',bat:'--s4'}[kind],h=extra?136:112;
+  const col={sun:'--s1',grid:'--s3',load:'--s2',bat:'--s4'}[kind],h=extra?146:126;
   return `<g filter="url(#sh)"><rect class="node" x="${x}" y="${y}" width="190" height="${h}" rx="18" fill="url(#ng)"/></g>
   <rect x="${x+14}" y="${y+h-8}" width="162" height="3" rx="1.5" fill="${css(col)}" opacity="${active?.9:.25}"/>
   ${icon(kind,x+36,y+36,soc)}
   <text class="t" x="${x+70}" y="${y+41}">${title}</text>
-  <text class="v" x="${x+20}" y="${y+80}">${value}</text><text class="s" x="${x+20}" y="${y+99}">${sub}</text>${extra?`<text class="s" x="${x+20}" y="${y+119}">${extra}</text>`:''}`;
+  <text class="v" x="${x+20}" y="${y+91}">${value}</text><text class="s" x="${x+20}" y="${y+110}">${sub}</text>${extra?`<text class="s" x="${x+20}" y="${y+128}">${extra}</text>`:''}`;
 }
 function flowline(d,color,watts,rev,id){
   const on=Math.abs(watts)>=20, w=3+Math.min(4,Math.abs(watts)/1500);
@@ -928,9 +930,9 @@ function drawFlow(){
   const n=NOW||{pv:0,load:0,grid:0,bat:0,soc:0};
   const pvw=n.pv,gw=n.grid,bw=n.bat,lw=n.load;
   const mob=window.innerWidth<700;
-  const LY=mob?{vb:'0 0 400 530',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
+  const LY=mob?{vb:'0 0 400 542',pv:[5,6],ld:[205,6],gr:[5,386],bt:[205,386],dx:-250,dy:67,
      p_pv:'M100 118 C100 190 100 245 135 258',p_gr:'M100 386 C100 350 105 325 135 318',p_ld:'M265 258 C300 245 300 190 300 118',p_bt:'M300 386 C300 350 295 325 265 318'}
-   :{vb:'0 0 900 412',pv:[10,36],ld:[700,36],gr:[10,242],bt:[700,242],dx:0,dy:0,
+   :{vb:'0 0 900 416',pv:[10,36],ld:[700,36],gr:[10,242],bt:[700,242],dx:0,dy:0,
      p_pv:'M200 92 C300 92 310 160 392 170',p_gr:'M200 298 C300 298 310 230 392 220',p_ld:'M508 170 C590 160 600 92 700 92',p_bt:'M700 298 C600 298 590 230 508 220'};
   $('flow').setAttribute('viewBox',LY.vb);
   let s=`<defs>
@@ -949,11 +951,12 @@ function drawFlow(){
   s+=`<g transform="translate(${LY.dx} ${LY.dy})"><g filter="url(#sh)"><path d="M366 178 L450 98 L534 178 Z" fill="url(#roof)" stroke="${css('--surface')}" stroke-width="6" stroke-linejoin="round"/>
   <rect x="385" y="168" width="130" height="104" rx="10" fill="url(#ng)" stroke="${css('--line')}" stroke-width="1.5"/></g>
   <rect x="402" y="182" width="26" height="22" rx="4" fill="${css('--gold')}" opacity="${lit?.9:.2}"/><rect x="472" y="182" width="26" height="22" rx="4" fill="${css('--gold')}" opacity="${lit?.9:.2}"/>
-  <text x="450" y="232" text-anchor="middle" style="font-size:19px;font-weight:700">Dům</text>
+  <text x="450" y="232" text-anchor="middle" style="font-size:19px;font-weight:700">Měnič</text>
   <text x="450" y="251" text-anchor="middle" class="s">${NOW&&NOW.model?NOW.model:L('měnič')}${NOW&&NOW.temp!=null?' · '+NOW.temp.toFixed(0)+' °C':''}</text></g>`;
   s+=node(LY.pv[0],LY.pv[1],'sun','Solár (FVE)',fmtW(pvw),pvw>=20?'vyrábí':'nevyrábí',0,pvw>=20);
-  s+=node(LY.gr[0],LY.gr[1],'grid','Síť',fmtW(Math.abs(gw)),gw>=20?'odběr ze sítě':gw<=-20?'dodávka do sítě':'bez výměny',0,Math.abs(gw)>=20);
-  s+=node(LY.ld[0],LY.ld[1],'load','Spotřeba domu',fmtW(lw),'aktuální odběr',0,lw>=20);
+  const gdown=NOW&&NOW.grid_ok===false,gh=gdown&&lw>=50?Math.max(0,(n.soc-10)/100*10.66/(lw/1000)):null;
+  s+=node(LY.gr[0],LY.gr[1],'grid','Síť',fmtW(Math.abs(gw)),gdown?L('síť nedostupná'):gw>=20?L('odběr ze sítě'):gw<=-20?L('dodávka do sítě'):L('bez výměny'),0,Math.abs(gw)>=20,gh!=null?L('baterie vydrží asi {0}',Math.floor(gh)+' h '+String(Math.round((gh%1)*60)).padStart(2,'0')+' min'):'');
+  s+=node(LY.ld[0],LY.ld[1],'load','Dům',fmtW(lw),'aktuální odběr',0,lw>=20);
   s+=node(LY.bt[0],LY.bt[1],'bat',L('Baterie {0}',PC(Math.round(n.soc))),fmtW(Math.abs(bw)),(bw>=20?L('vybíjí se'):bw<=-20?L('nabíjí se'):L('nečinná'))+'',n.soc,Math.abs(bw)>=20,(n.bat_detail&&n.bat_detail.temp!=null?fmtK(n.bat_detail.temp,0)+' °C · '+fmtK(n.bat_detail.v,0)+' V · '+fmtK(Math.abs(n.bat_detail.i),1)+' A':''));
   $('flow').innerHTML=s;
   $('modeinfo').textContent=NOW&&NOW.work_mode?(L('režim: {0}',NOW.work_mode)+(NOW.bat_mode?L(' · baterie: {0}',NOW.bat_mode):'')):'';

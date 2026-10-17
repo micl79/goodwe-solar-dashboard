@@ -34,6 +34,7 @@ Komunikace s uživatelem je česky.
 ## Upozornění (`upozorneni.py`)
 - Web Push přes `pywebpush` (nepovinný balíček). Klíč VAPID se při prvním startu vytvoří v `push_klic.json`, přihlášené telefony jsou v `push_odberatele.json` (obojí v .gitignore, nikdy nenahrávat).
 - Přihlášení k upozornění vyžaduje stejný přístupový kód jako ovládání. Události: baterie plná (po poklesu pod 90 %), nabíjení skončilo, měnič 10 min nedostupný a znovu online.
+- Výpadek sítě (`upozorneni.siet()`): měnič hlásí `grid_mode` a `vgrid`; po 30 s bez sítě přijde „Výpadek sítě“ (stav baterie, odhad vydržení při současné spotřebě, 10 kWh rezerva 10 %), po návratu „Síť je zpět“. Ve schématu karta Síť ukáže „síť nedostupná“. Jen čtení; ostrovní režim se z dashboardu NEPŘEPÍNÁ (měnič má vlastní záložní výstup, `backup_supply`=1, `backup_mode_enable`=0; zátěž na záložním výstupu byla 17 W, dům tam zřejmě není zapojen, proto při výpadcích nic nenapájel; ověřit s elektrikářem).
 - Na iPhonu fungují jen u stránky přidané na plochu (iOS 16.4+) a přes https (Tailscale serve). Ověřeno na skutečném iPhonu 10. 10. 2026 (zkouška přišla).
 - Provoz: dashboard běží z projektové složky (data CSV jsou tady). Druhá instance se nespustí (`allow_reuse_address = False`).
 

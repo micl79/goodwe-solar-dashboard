@@ -157,6 +157,55 @@ def tick(soc, now=None, send=None):
                  en=("Battery full", "The battery level has reached 100%."))
 
 
+# --- výpadek a návrat sítě; volá se při každém čtení měniče ---
+GRID_DEBOUNCE_S = 30        # krátké poklesy napětí se neoznamují
+CAPACITY_KWH = 10.66        # Dyness Tower T10 (jmenovitě)
+RESERVE_PCT = 10            # pod touto hodnotou se s baterií nepočítá
+
+
+def odhad_hodin(soc, load_w, capacity=CAPACITY_KWH):
+    """Kolik hodin vydrží baterie při dané spotřebě (hrubý odhad), nebo None."""
+    if soc is None or not load_w or load_w < 50:
+        return None
+    return max(0.0, (soc - RESERVE_PCT) / 100 * capacity / (load_w / 1000))
+
+
+def _hm(h):
+    m = int(round(h * 60))
+    return (f"{m // 60} h {m % 60:02d} min", f"{m // 60} h {m % 60:02d} min")
+
+
+def siet(ok, soc, load_w, now=None, send=None):
+    """ok: True = měnič je připojen k síti, False = síť vypadla, None = neznámo (nic se neděje)."""
+    now = time.time() if now is None else now
+    send = send or notify
+    if ok is None:
+        return
+    s = _st
+    if not ok:
+        s.setdefault("grid_bad_since", now)
+        if s["grid_bad_since"] is None:
+            s["grid_bad_since"] = now
+        if not s.get("grid_down") and now - s["grid_bad_since"] >= GRID_DEBOUNCE_S:
+            s["grid_down"] = True
+            s["grid_down_at"] = s["grid_bad_since"]
+            h = odhad_hodin(soc, load_w)
+            cs = f"Baterie {round(soc)} %." if soc is not None else ""
+            en = f"Battery {round(soc)}%." if soc is not None else ""
+            if h is not None:
+                cs += f" Při současné spotřebě vydrží zhruba {_hm(h)[0]}."
+                en += f" At the current consumption it lasts about {_hm(h)[1]}."
+            send("Výpadek sítě", cs.strip() or "Měnič nevidí síť.", "siet",
+                 en=("Grid outage", en.strip() or "The inverter does not see the grid."))
+        return
+    s["grid_bad_since"] = None
+    if s.get("grid_down"):
+        s["grid_down"] = False
+        dur = max(0.0, now - s.get("grid_down_at", now)) / 3600
+        send("Síť je zpět", f"Výpadek trval asi {_hm(dur)[0]}.", "siet",
+             en=("Grid is back", f"The outage lasted about {_hm(dur)[1]}."))
+
+
 # --- souhrn zítřejších cen ---
 def _kc(v):
     return f"{v:.2f}".replace(".", ",")
