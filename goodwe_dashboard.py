@@ -736,7 +736,7 @@ const EN={
 "Solár (FVE)":"Solar (PV)","vyrábí":"producing","nevyrábí":"not producing","odběr ze sítě":"importing from grid","dodávka do sítě":"exporting to grid",
 "bez výměny":"no exchange","aktuální odběr":"current consumption","vybíjí se":"discharging","nabíjí se":"charging","nečinná":"idle","měnič":"inverter",
 "Baterie {0}":"Battery {0}","režim: {0}":"mode: {0}"," · baterie: {0}":" · battery: {0}"," · teplota baterie: {0} °C":" · battery temperature: {0} °C",
-"Detail baterie":"Battery detail",
+"Detail baterie":"Battery detail","Čísla nad sloupci = soběstačnost":"Numbers above the bars = self-sufficiency",
 "Výchozí režim. Solár napájí dům, přebytek nabíjí baterii a zbytek se prodává do sítě. Když solár nestačí, dům bere z baterie a teprve potom ze sítě.":"The default mode. Solar powers the house, the surplus charges the battery and the rest is sold to the grid. When solar is not enough, the house draws from the battery first and only then from the grid.",
 "Řízení podle časového plánu. V nastavených hodinách se baterie nabíjí ze sítě nebo vybíjí, mimo ně se měnič chová běžně. Hodí se pro nabíjení za nízké ceny.":"Control by a time schedule. During the set hours the battery charges from the grid or discharges; outside them the inverter behaves normally. Useful for charging at low prices.",
 "Co nejvíc vlastní výroby pro vlastní dům. Přebytek ze solárů jde nejdřív do baterie a do sítě se prodává co nejméně.":"As much of your own production as possible for your own house. Solar surplus goes to the battery first and as little as possible is sold to the grid.",
@@ -1072,12 +1072,13 @@ function drawStats(){
        <div class="stackl" style="margin-top:10px"><span>Baterie: nabito <b>${fmtK(chg)} kWh</b></span><span>vybito <b>${fmtK(dis)} kWh</b></span></div></div>`;
   $('barstitle').textContent=per==='7'||per==='30'?'Denní hodnoty (kWh)':(P.bars.length&&P.bars[0].l.length===4)?'Roční hodnoty (kWh)':'Měsíční hodnoty (kWh)';
   const anyEst=P.bars.some(b=>b.e>=0.5);
-  $('chips').innerHTML=(anyEst?'<span class="hint" style="margin-right:10px">▨ odhad</span>':'')+SER.map((s,i)=>`<button class="chip ${vis.has(i)?'':'off'}" data-i="${i}"><i style="background:${css(s.c)}"></i>${s.n}</button>`).join('');
+  $('chips').innerHTML='<span class="hint" style="margin-right:10px">'+L('Čísla nad sloupci = soběstačnost')+'</span>'+(anyEst?'<span class="hint" style="margin-right:10px">▨ odhad</span>':'')+SER.map((s,i)=>`<button class="chip ${vis.has(i)?'':'off'}" data-i="${i}"><i style="background:${css(s.c)}"></i>${s.n}</button>`).join('');
   document.querySelectorAll('#chips .chip').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(vis.has(i)){if(vis.size>1)vis.delete(i);}else vis.add(i);drawStats();});
   drawBars(P);drawTable2(P);
 }
+const selfOf=b=>b.v[1]>0?Math.max(0,b.v[1]-b.v[2])/b.v[1]:null;   // soběstačnost: podíl spotřeby, který nebyl nakoupen
 function drawBars(P){
-  const svg=$('bars'),W=svg.clientWidth||800,H=320,m={l:52,r:10,t:12,b:28},bars=P.bars,show=SER.map((s,i)=>i).filter(i=>vis.has(i));
+  const svg=$('bars'),W=svg.clientWidth||800,H=320,m={l:52,r:10,t:30,b:28},bars=P.bars,show=SER.map((s,i)=>i).filter(i=>vis.has(i));
   if(!bars.length){svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">Historie se teprve sbírá. Sloupce se objeví po prvním celém dni.</text>`;return;}
   let hi=1;bars.forEach(b=>show.forEach(i=>hi=Math.max(hi,b.v[SER[i].k])));
   const raw=hi/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),step=[1,2,2.5,5,10].map(x=>x*mag).find(x=>x>=raw);
@@ -1093,6 +1094,8 @@ function drawBars(P){
       if(h<=0.5)return;
       o+=`<path d="M${x} ${H-m.b}V${y+r}a${r} ${r} 0 0 1 ${r} ${-r}h${w-2*r}a${r} ${r} 0 0 1 ${r} ${r}V${H-m.b}Z" fill="${b.e>=0.5?`url(#hs${si})`:css(SER[si].c)}"${b.e>=0.5?` stroke="${css(SER[si].c)}" stroke-width="1.2" stroke-dasharray="3 2"`:''}/>`;
     });
+    const ss=selfOf(b);
+    if(ss!=null&&(gw>=34||gi%every===0))o+=`<text x="${cx}" y="16" text-anchor="middle" style="font-size:${gw>=44?12:10}px;font-weight:600;fill:${css('--gold2')}">${Math.round(ss*100)}${gw>=44?' %':''}</text>`;
     if(gi%every===0)o+=`<text x="${cx}" y="${H-8}" text-anchor="middle">${lab(b.l)}</text>`;
     o+=`<rect class="hit" data-i="${gi}" x="${m.l+gi*gw}" y="${m.t}" width="${gw}" height="${H-m.t-m.b}" fill="transparent"/>`;
   });
@@ -1101,15 +1104,15 @@ function drawBars(P){
 $('bars').addEventListener('mousemove',e=>{
   const t=e.target.closest?e.target:null;if(!t||!t.classList.contains('hit'))return;
   const s=$('bars')._s,b=s.bars[+t.dataset.i],tip=$('btip');
-  tip.innerHTML=`<b>${labFull(b.l)}</b>`+SER.map(x=>`<div><span><i style="background:${css(x.c)}"></i>${x.n}</span><span>${fmtK(b.v[x.k])} kWh</span></div>`).join('')+(b.e>0?`<div style="margin-top:4px;color:var(--ink2)"><span>▨ odhad</span><span>${L('{0} % období',Math.round(b.e*100))}</span></div>`:'');
+  tip.innerHTML=`<b>${labFull(b.l)}</b>`+SER.map(x=>`<div><span><i style="background:${css(x.c)}"></i>${x.n}</span><span>${fmtK(b.v[x.k])} kWh</span></div>`).join('')+(selfOf(b)!=null?`<div style="margin-top:4px"><span>${L('Soběstačnost')}</span><span>${Math.round(selfOf(b)*100)} %</span></div>`:'')+(b.e>0?`<div style="margin-top:4px;color:var(--ink2)"><span>▨ odhad</span><span>${L('{0} % období',Math.round(b.e*100))}</span></div>`:'');
   tip.style.display='block';const rect=$('bars').getBoundingClientRect(),px=(+t.dataset.i+.5)*s.gw+s.m.l,sc=rect.width/s.W;
   const left=px*sc+14;tip.style.left=(left+210>rect.width?left-236:left)+'px';tip.style.top='10px';
 });
 $('bars').addEventListener('mouseleave',()=>{$('btip').style.display='none';});
 function drawTable2(P){
   const rows=P.bars.slice().reverse();
-  $('tbl2').innerHTML='<table><thead><tr><th>Období</th><th>Výroba</th><th>Spotřeba</th><th>Prodej</th><th>Nákup</th><th>Nabito</th><th>Vybito</th></tr></thead><tbody>'+
-   rows.map(b=>`<tr${b.e>=0.5?' style="font-style:italic;color:var(--ink2)"':''}><td>${labFull(b.l)}${b.e>0?L(' ~odhad'):''}</td><td>${fmtK(b.v[0])}</td><td>${fmtK(b.v[1])}</td><td>${fmtK(b.v[3])}</td><td>${fmtK(b.v[2])}</td><td>${fmtK(b.v[4])}</td><td>${fmtK(b.v[5])}</td></tr>`).join('')+'</tbody></table>';
+  $('tbl2').innerHTML='<table><thead><tr><th>Období</th><th>Výroba</th><th>Spotřeba</th><th>Prodej</th><th>Nákup</th><th>Nabito</th><th>Vybito</th><th>Soběstačnost</th></tr></thead><tbody>'+
+   rows.map(b=>`<tr${b.e>=0.5?' style="font-style:italic;color:var(--ink2)"':''}><td>${labFull(b.l)}${b.e>0?L(' ~odhad'):''}</td><td>${fmtK(b.v[0])}</td><td>${fmtK(b.v[1])}</td><td>${fmtK(b.v[3])}</td><td>${fmtK(b.v[2])}</td><td>${fmtK(b.v[4])}</td><td>${fmtK(b.v[5])}</td><td>${selfOf(b)==null?'–':Math.round(selfOf(b)*100)+' %'}</td></tr>`).join('')+'</tbody></table>';
 }
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');per=b.dataset.p;drawStats();});
 $('tbl2btn').onclick=()=>{const t=$('tbl2');t.style.display=t.style.display==='block'?'none':'block';};
